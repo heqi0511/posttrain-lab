@@ -199,6 +199,9 @@ def _resolve_config(config):
     resolved["training"].setdefault("fp16", False)
     resolved["training"].setdefault("gradient_checkpointing", False)
     resolved["training"].setdefault("warmup_steps", 0)
+    resolved["training"].setdefault("logging_steps", 1)
+    resolved["training"].setdefault("eval_steps", 1)
+    resolved["training"].setdefault("save_steps", resolved["training"]["max_steps"])
     resolved["training"].setdefault("save_total_limit", 2)
     resolved["peft"].setdefault("method", "lora")
     resolved["peft"].setdefault("qlora", False)
@@ -219,6 +222,10 @@ def _resolve_config(config):
     resolved["eval_after_train"].setdefault("baseline_metrics_path", "/tmp/posttrain_lab_eval/baseline_run/metrics.json")
     resolved["eval_after_train"].setdefault("dry_run", True)
     resolved["eval_after_train"].setdefault("model_name", "dummy")
+    resolved["eval_after_train"].setdefault("adapter_path", str(Path(resolved["output_dir"])))
+    resolved["eval_after_train"].setdefault("torch_dtype", resolved["torch_dtype"])
+    resolved["eval_after_train"].setdefault("trust_remote_code", resolved["trust_remote_code"])
+    resolved["eval_after_train"].setdefault("apply_chat_template", True)
     resolved["eval_after_train"].setdefault("temperature", 0.0)
     resolved["eval_after_train"].setdefault("top_p", 1.0)
     resolved["eval_after_train"].setdefault("max_new_tokens", 32)
@@ -287,11 +294,11 @@ def _run_trl_training(config, train_examples, validation_examples, output_dir):
         gradient_accumulation_steps=int(config["training"]["gradient_accumulation_steps"]),
         learning_rate=float(config["training"]["learning_rate"]),
         warmup_steps=int(config["training"]["warmup_steps"]),
-        logging_steps=1,
+        logging_steps=int(config["training"]["logging_steps"]),
         logging_first_step=True,
         eval_strategy="steps" if validation_examples else "no",
-        eval_steps=1 if validation_examples else None,
-        save_steps=int(config["training"]["max_steps"]),
+        eval_steps=int(config["training"]["eval_steps"]) if validation_examples else None,
+        save_steps=int(config["training"]["save_steps"]),
         save_total_limit=int(config["training"]["save_total_limit"]),
         report_to="none",
         seed=int(config["seed"]),
@@ -336,6 +343,9 @@ def _write_generation_check(path, config, dry_run, model=None, tokenizer=None, e
         rng = random.Random(int(config["seed"]))
         selected = rng.sample(examples, k=min(sample_count, len(examples)))
         prompts.extend(_example_prompt(example) for example in selected)
+
+    if not dry_run and hasattr(model, "eval"):
+        model.eval()
 
     for index, prompt in enumerate(prompts):
         if dry_run:
@@ -418,6 +428,10 @@ def _build_eval_config(config, output_dir):
         "output_dir": eval_config.get("output_dir") or str(output_dir / "eval"),
         "dry_run": eval_config["dry_run"],
         "model_name": eval_config["model_name"],
+        "adapter_path": eval_config["adapter_path"],
+        "torch_dtype": eval_config["torch_dtype"],
+        "trust_remote_code": eval_config["trust_remote_code"],
+        "apply_chat_template": eval_config["apply_chat_template"],
         "inference": {
             "temperature": eval_config["temperature"],
             "top_p": eval_config["top_p"],
@@ -481,10 +495,22 @@ def _generate_text(model, tokenizer, prompt, max_new_tokens):
         inputs = {key: value.to(model.device) for key, value in inputs.items()}
 
     if torch is None:
-        outputs = model.generate(**inputs, max_new_tokens=int(max_new_tokens), do_sample=False)
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=int(max_new_tokens),
+            do_sample=False,
+            pad_token_id=tokenizer.pad_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+        )
     else:
         with torch.no_grad():
-            outputs = model.generate(**inputs, max_new_tokens=int(max_new_tokens), do_sample=False)
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=int(max_new_tokens),
+                do_sample=False,
+                pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
 
     prompt_length = inputs["input_ids"].shape[-1]
     generated = outputs[0][prompt_length:]

@@ -112,26 +112,61 @@ class _DryRunGenerator:
 class _HFCausalLMGenerator:
     def __init__(self, config):
         try:
+            import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
         except ImportError as exc:
-            raise RuntimeError("transformers is required for non-dry-run evals") from exc
+            raise RuntimeError("torch and transformers are required for non-dry-run evals") from exc
 
         model_name = config["model_name"]
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        self.torch = torch
+        self.apply_chat_template = bool(config.get("apply_chat_template", False))
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name,
+            trust_remote_code=bool(config.get("trust_remote_code", False)),
+        )
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer.padding_side = "left"
+
+        model_kwargs = {"trust_remote_code": bool(config.get("trust_remote_code", False))}
+        dtype = _torch_dtype(config.get("torch_dtype"))
+        if dtype is not None:
+            model_kwargs["dtype"] = dtype
+        self.model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+
+        adapter_path = config.get("adapter_path")
+        if adapter_path:
+            try:
+                from peft import PeftModel
+            except ImportError as exc:
+                raise RuntimeError("peft is required to load adapter_path for evals") from exc
+            self.model = PeftModel.from_pretrained(self.model, adapter_path)
+
+        if torch.cuda.is_available():
+            self.model = self.model.to("cuda")
+        self.model.eval()
 
     def generate(self, example, inference_config):
-        prompt = _prompt_to_text(example.get("prompt", ""))
+        prompt = _prompt_to_text(
+            example.get("prompt", ""),
+            tokenizer=self.tokenizer,
+            apply_chat_template=self.apply_chat_template,
+        )
         inputs = self.tokenizer(prompt, return_tensors="pt")
+        if hasattr(self.model, "device"):
+            inputs = {key: value.to(self.model.device) for key, value in inputs.items()}
         do_sample = inference_config.get("temperature", 0.0) > 0
         generation_kwargs = {
             "do_sample": do_sample,
             "max_new_tokens": int(inference_config.get("max_new_tokens", 128)),
+            "pad_token_id": self.tokenizer.pad_token_id,
+            "eos_token_id": self.tokenizer.eos_token_id,
         }
         if do_sample:
             generation_kwargs["temperature"] = inference_config.get("temperature", 1.0)
             generation_kwargs["top_p"] = inference_config.get("top_p", 1.0)
-        outputs = self.model.generate(**inputs, **generation_kwargs)
+        with self.torch.no_grad():
+            outputs = self.model.generate(**inputs, **generation_kwargs)
         prompt_length = inputs["input_ids"].shape[-1]
         generated = outputs[0][prompt_length:]
         return self.tokenizer.decode(generated, skip_special_tokens=True)
@@ -156,12 +191,38 @@ def _load_jsonl(path):
     return records
 
 
-def _prompt_to_text(prompt):
+def _prompt_to_text(prompt, tokenizer=None, apply_chat_template=False):
+    if apply_chat_template and tokenizer is not None:
+        messages = prompt if isinstance(prompt, list) else [{"role": "user", "content": str(prompt)}]
+        try:
+            return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        except (TypeError, ValueError):
+            pass
     if isinstance(prompt, str):
         return prompt
     if isinstance(prompt, list):
         return "\n".join(str(message.get("content", "")) for message in prompt)
     return str(prompt)
+
+
+def _torch_dtype(name):
+    if name in {None, "auto"}:
+        return "auto" if name == "auto" else None
+    try:
+        import torch
+    except ImportError as exc:
+        raise RuntimeError("torch is required for non-auto torch_dtype settings") from exc
+    aliases = {
+        "bfloat16": torch.bfloat16,
+        "bf16": torch.bfloat16,
+        "float16": torch.float16,
+        "fp16": torch.float16,
+        "float32": torch.float32,
+        "fp32": torch.float32,
+    }
+    if name not in aliases:
+        raise ValueError(f"unsupported torch_dtype: {name}")
+    return aliases[name]
 
 
 def _apply_stop_tokens(text, stop_tokens):

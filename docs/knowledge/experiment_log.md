@@ -1,6 +1,6 @@
 # Experiment Log
 
-Status: scaffold plus SFT overfit-32 and smoke-1k dry-run paths.
+Status: scaffold plus SFT overfit-32, Qwen3-0.6B overfit-32, and real Qwen3-0.6B smoke-1k paths.
 
 Record training and eval runs here with links to run directories, run cards, resolved configs, metrics, sample generations, representative failures, and comparison notes.
 
@@ -17,11 +17,13 @@ Record training and eval runs here with links to run directories, run cards, res
 
 - Config: `configs/sft/smoke_1k.yaml`
 - Command: `make sft-smoke`
-- Default mode: dry-run with synthetic temporary data under `/tmp/posttrain_lab_sft/`
+- Default mode: real TRL/PEFT LoRA run with `Qwen/Qwen3-0.6B`.
+- Data source: synthetic schema-valid SFT examples generated under `runs/sft/smoke_1k/data/` when missing.
 - Output path: `runs/sft/smoke_1k/`
 - This is a smoke run, not a final training result.
 - Required artifacts: `resolved_config.yaml`, `run_card.md`, `metrics.jsonl`, `sample_generations.jsonl`, `eval_diff.md`
-- The target first runs the fixed dry-run eval baseline and then runs eval-after-train without modifying baseline eval config files.
+- The target first runs the fixed dry-run eval baseline, then runs eval-after-train on the saved adapter without modifying baseline eval config files.
+- Required checks: train loss, validation loss, format success, target eval score, average output length, and 20 sampled generations.
 
 ## Qwen3-0.6B Overfit-32
 

@@ -1,28 +1,40 @@
 run_name: sft-smoke-1k
-model_name_or_path: hf-internal-testing/tiny-random-gpt2
-data_path: /tmp/posttrain_lab_sft/smoke_1k_sft.jsonl
+model_name_or_path: Qwen/Qwen3-0.6B
+data_path: runs/sft/smoke_1k/data/sft_smoke_1k.jsonl
 output_dir: runs/sft/smoke_1k
-dry_run: true
+dry_run: false
 synthetic_data_if_missing: true
 smoke_run: true
 seed: 13
+torch_dtype: bfloat16
+trust_remote_code: false
+attn_implementation: null
 selection:
   train_split: train
   validation_split: val
   max_train_examples: 1000
   max_validation_examples: 64
 training:
-  max_steps: 4
+  max_steps: 1000
   per_device_train_batch_size: 1
   gradient_accumulation_steps: 1
-  learning_rate: 0.0002
+  learning_rate: 0.0005
   max_seq_length: 128
+  bf16: true
+  fp16: false
+  gradient_checkpointing: true
+  warmup_steps: 0
+  logging_steps: 10
+  eval_steps: 100
+  save_steps: 1000
+  save_total_limit: 2
 peft:
   method: lora
   qlora: false
-  r: 4
-  lora_alpha: 8
+  r: 16
+  lora_alpha: 32
   lora_dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
 generation_check:
   max_new_tokens: 16
   random_sample_count: 20
@@ -32,8 +44,12 @@ eval_after_train:
   prompt_path: /tmp/posttrain_lab_eval/baseline_prompts.jsonl
   output_dir: runs/sft/smoke_1k/eval
   baseline_metrics_path: /tmp/posttrain_lab_eval/baseline_run/metrics.json
-  dry_run: true
-  model_name: dummy
+  dry_run: false
+  model_name: Qwen/Qwen3-0.6B
+  adapter_path: runs/sft/smoke_1k
+  torch_dtype: bfloat16
+  trust_remote_code: false
+  apply_chat_template: true
   temperature: 0.0
   top_p: 1.0
   max_new_tokens: 32
