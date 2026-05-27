@@ -1,132 +1,90 @@
-## Non-negotiable rules
+# AGENTS.md
 
-- Never modify files under `data/raw/` unless explicitly instructed.
-- Never change train/val/test splits without updating `docs/knowledge/data_card.md` and asking for review.
-- Never modify eval prompts, labels, or metrics to make a model look better.
-- Never modify reward functions without adding or updating unit tests.
-- Never expose hidden tests or ground-truth answers in prompts.
-- Never start long training runs unless explicitly requested. A long run means any server GPU job, any run expected to exceed 10 minutes locally, or any command that downloads large models or datasets.
-- Never delete failed runs, bad metrics, or failure samples.
-- Never make network calls inside reward functions or verifiers.
-- Never commit secrets, API keys, model tokens, or private credentials.
+## Principles
 
-## Project invariants
+- Correctness over speed.
+- Reproducibility over convenience.
+- Eval integrity over metric improvement.
+- Smoke tests before full training.
+- Human review before expensive or experiment-defining changes.
 
-- Base model: `Qwen/Qwen3-0.6B-Base`.
-- First task family: math only.
-- First training framework: TRL for the MVP.
-- Migration target: verl only after data, rewards, and evals are stable enough to justify the move.
-- Stage 1 objective: use SFT to teach output format, math-domain behavior, tool-use protocol, and final-answer schema.
-- Stage 2 objective: use RLVR to improve correctness with deterministic verifiers.
+## Scope
 
-## Default workflow
+This repo prepares SFT and RLVR/GRPO workflows for approximately 5B-class models. Start with TRL MVPs; consider verl only after data, reward, and eval protocols are stable.
 
-For any non-trivial change:
+## Non-Negotiable Rules
 
-1. Inspect the relevant skill.
-2. Make the smallest change that satisfies the task.
-3. Add or update tests.
-4. Run the required checks.
-5. Summarize changed files, commands run, and remaining risks.
+- Do not implement or launch training code unless the user explicitly asks.
+- Do not modify `data/raw/` unless explicitly instructed.
+- Do not change train/val/test splits without updating `docs/knowledge/data_card.md` and asking for review.
+- Do not modify eval prompts, labels, metrics, or baselines to improve reported results.
+- Do not expose hidden tests or ground-truth answers in prompts, training data, or reward fixtures.
+- Do not change reward semantics without tests and human review.
+- Do not make network calls inside reward functions or verifiers.
+- Do not delete failed runs, bad metrics, or failure samples.
+- Do not overwrite prior runs; write new outputs to new run directories.
+- Do not commit secrets, API keys, model tokens, private data, or credentials.
+- Do not start long runs without explicit approval. Long runs include any server GPU job, local run expected to exceed 10 minutes, or command that downloads large models or datasets.
 
-Prefer smoke tests before full runs.
-Prefer deterministic tests before expensive training.
-Prefer explicit configs over hidden defaults.
+## Default Workflow
 
-If the relevant skill is missing or empty, inspect `docs/knowledge/` and mention the missing skill in the summary.
+For non-trivial work:
 
-## Required checks
+1. Inspect the relevant skill under `.agents/skills/`.
+2. Check `docs/knowledge/` for project facts and prior decisions.
+3. Make the smallest change that satisfies the task.
+4. Add or update deterministic tests when behavior changes.
+5. Run the required checks, or state clearly when a target does not exist yet.
+6. Summarize changed files, commands run, and remaining risks.
 
-If a listed `make` target exists, run it. If it does not exist yet, state that explicitly and prefer adding the target before relying on an ad hoc command.
+## Required Checks
 
-For general code changes:
+If a listed target does not exist yet, do not invent a hidden equivalent; report the gap.
 
-```bash
-make format
-make lint
-make test
-```
+| Task type | Required checks |
+| --- | --- |
+| General code or config | `make format`, `make lint`, `make test` |
+| Data schema or dataset staging | `make validate-data`, `make check-leakage` |
+| Reward or verifier | `make test-rewards` |
+| Eval harness, metrics, prompts | `make test-eval`, `make eval-baseline` |
+| SFT workflow | `make sft-smoke`, `make sft-overfit32` |
+| RLVR/GRPO workflow | `make rlvr-smoke`, `make test-rewards`, `make test-eval` |
 
-For data schema or dataset changes:
+## Human Review Required
 
-```bash
-make validate-data
-make check-leakage
-```
+Ask for review before:
 
-For reward/verifier changes:
+- changing base model family, tokenizer, chat template, or context length assumptions
+- changing reward semantics or reward aggregation
+- changing eval prompts, labels, metrics, or baseline comparison logic
+- changing train/val/test split logic
+- adding, removing, or materially filtering training datasets
+- launching any server GPU job or long local run
+- changing RL algorithm, KL policy, rollout sampling policy, or verifier contract
+- deleting, hiding, or overwriting run outputs or failure cases
 
-```bash
-make test-rewards
-```
+## Experiment Logging
 
-For eval changes:
-
-```bash
-make test-eval
-make eval-baseline
-```
-
-For SFT training code changes:
-
-```bash
-make sft-overfit32
-```
-
-For RLVR training code changes:
-
-```bash
-make rlvr-smoke
-```
-
-## Reward and eval integrity
-
-- Reward functions and verifiers must be deterministic, side-effect-free, and independent of wall-clock time.
-- Reward functions and verifiers must not call external APIs, download resources, or depend on network access.
-- Eval sets, hidden tests, and ground-truth answers must not enter SFT or RLVR training data.
-- Eval prompts, labels, and metrics must not be changed for the purpose of improving reported model performance.
-- Failed runs must be preserved. New runs should write to new directories rather than overwriting prior outputs.
-
-## Experiment logging
-
-Every training run must write:
+Every training or eval run must write:
 
 - `run_card.md`
 - `resolved_config.yaml`
 - `metrics.jsonl`
 - `eval_report.json`
-- `sample_generations.jsonl`
+- `sample_generations.jsonl` when generations are produced
 
 Every `run_card.md` must include:
 
-- base model
-- parent checkpoint, if applicable
-- checkpoint or adapter path
-- git commit
-- launch command
-- environment and dependency versions
-- hardware or server node
-- random seed
-- whether this was a smoke run
-- training duration
-- data path
-- data hash
-- config path
-- config hash
-- reward version, if applicable
-- eval version
-- final metrics
-- known caveats
+- base model, checkpoint or adapter path, and parent checkpoint if applicable
+- git commit, launch command, environment/dependency versions, hardware or server node
+- random seed, smoke/full-run label, start time, duration, and failure status if failed
+- data paths and hashes, config path and hash, reward version, eval version
+- final metrics, representative failures, and known caveats
 
-## Human review required
+## Skill Map
 
-Ask for review before:
-
-- changing reward semantics
-- changing eval prompts, labels, or metrics
-- changing train/val/test split logic
-- adding new training datasets
-- launching runs expected to use significant GPU time
-- changing base model family
-- changing tokenizer or chat template
-- deleting or overwriting previous runs
+- Data work: `.agents/skills/data-curation/SKILL.md`
+- SFT work: `.agents/skills/sft-experiment/SKILL.md`
+- Reward/verifier work: `.agents/skills/reward-verifier/SKILL.md`
+- RLVR/GRPO work: `.agents/skills/rlvr-experiment/SKILL.md`
+- Eval work: `.agents/skills/eval-regression/SKILL.md`
