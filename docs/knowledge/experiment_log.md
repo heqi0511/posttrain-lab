@@ -139,5 +139,6 @@ Record training and eval runs here with links to run directories, run cards, res
 - Pipeline stages: validate SFT/RLVR data, eval base, SFT overfit-32, eval SFT, reward checks, RLVR/GRPO toy smoke, eval RLVR, and write base/SFT/SFT+RLVR comparison.
 - Output path: `runs/e2e/toy_math_posttraining/`.
 - Required root artifacts: `baseline_eval_report.json`, `sft_run_card.md`, `sft_eval_report.json`, `rlvr_run_card.md`, `rlvr_eval_report.json`, `comparison_report.md`, `sample_generations.jsonl`, and `sample_rollouts.jsonl`.
-- Fail-fast gates: data validation errors, reward check failures, output length above config, or parse failure rate above config.
+- Fail-fast gates: data validation errors, reward check failures, output length above config, or parse failure rate above the stage-specific config.
+- Baseline eval may use a looser parse-failure threshold so base-model format failures can be recorded for comparison; SFT and RLVR remain strict by default.
 - Current status: implementation ready for safe-mode CI smoke; real model run has not been launched in this entry.

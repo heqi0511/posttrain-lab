@@ -51,7 +51,12 @@ def run_e2e_smoke(config_path, output_dir=None, real_run=False):
         dry_run=dry_run,
         config=config,
     )
-    _enforce_eval_gates(baseline_metrics, run_dir / "evals" / "base", limits)
+    _enforce_eval_gates(
+        baseline_metrics,
+        run_dir / "evals" / "base",
+        limits,
+        parse_threshold_key="max_baseline_parse_failure_rate",
+    )
 
     sft_result = run_sft(
         _sft_config(config, model_name, sft_data_path, run_dir / "sft", dry_run),
@@ -357,9 +362,10 @@ def _validate_or_fail(path, dataset_type):
         raise RuntimeError(f"{dataset_type} data validation failed for {path}: {messages}")
 
 
-def _enforce_eval_gates(metrics, eval_output_dir, limits):
+def _enforce_eval_gates(metrics, eval_output_dir, limits, parse_threshold_key="max_parse_failure_rate"):
     parse_failure_rate = metrics.get("parse_failure_rate")
-    if parse_failure_rate is not None and parse_failure_rate > float(limits["max_parse_failure_rate"]):
+    threshold = float(limits[parse_threshold_key])
+    if parse_failure_rate is not None and parse_failure_rate > threshold:
         raise RuntimeError(f"parse failure rate {parse_failure_rate} exceeds configured threshold")
     _enforce_raw_generation_length(Path(eval_output_dir) / "raw_generations.jsonl", limits)
 

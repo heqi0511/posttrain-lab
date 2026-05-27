@@ -11,6 +11,7 @@ trust_remote_code: false
 enable_thinking: false
 limits:
   max_output_length: 128
+  max_baseline_parse_failure_rate: 1.0
   max_parse_failure_rate: 0.0
   sft_train_examples: 32
   sft_val_examples: 2
