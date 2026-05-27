@@ -126,17 +126,31 @@ def test_dry_run_grpo_writes_required_artifacts(tmp_path):
     result = run_grpo(load_config(config_path), config_path=config_path)
 
     assert result["reward_mean"] == 1.0
+    assert result["reward_std"] == 0.0
+    assert result["zero_reward_rate"] == 0.0
+    assert result["perfect_reward_rate"] == 1.0
     assert result["parse_failure_rate"] == 0.0
-    assert result["completion_length_mean"] > 0
+    assert result["avg_completion_length"] > 0
     assert (output_dir / "resolved_config.yaml").exists()
     assert (output_dir / "run_card.md").exists()
     assert (output_dir / "metrics.jsonl").exists()
-    assert (output_dir / "sample_generations.jsonl").exists()
+    assert (output_dir / "sample_rollouts.jsonl").exists()
+
+    sample_rollout = json.loads((output_dir / "sample_rollouts.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert set(sample_rollout) >= {
+        "prompt",
+        "completion",
+        "reward",
+        "parsed_answer",
+        "failure_reason",
+    }
+    assert sample_rollout["parsed_answer"] == sample_rollout["answer"]
+    assert sample_rollout["failure_reason"] is None
 
     run_card = (output_dir / "run_card.md").read_text(encoding="utf-8")
     assert "reward version: `math_boxed_v001`" in run_card
     assert "parse failure rate: `0.0`" in run_card
-    assert "completion length mean:" in run_card
+    assert "avg completion length:" in run_card
 
 
 def test_dry_run_can_create_synthetic_rlvr_data(tmp_path):

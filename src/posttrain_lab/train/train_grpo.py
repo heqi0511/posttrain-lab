@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import statistics
 from pathlib import Path
 
 from posttrain_lab.data.validate import validate_jsonl
@@ -108,8 +109,8 @@ def run_grpo(config, config_path):
     if resolved["dry_run"]:
         trainer_log = [{"step": 0, "loss": 0.0}, {"step": int(resolved["training"]["max_steps"]), "loss": 0.0}]
         _write_jsonl(output_dir / "trainer_log.jsonl", trainer_log)
-        sample_rows = _write_sample_generations(
-            output_dir / "sample_generations.jsonl",
+        sample_rows = _write_sample_rollouts(
+            output_dir / "sample_rollouts.jsonl",
             resolved,
             examples=examples,
             dry_run=True,
@@ -118,8 +119,8 @@ def run_grpo(config, config_path):
     else:
         final_loss, trainer_log, model, tokenizer = _run_trl_grpo(resolved, examples, output_dir)
         _write_jsonl(output_dir / "trainer_log.jsonl", trainer_log)
-        sample_rows = _write_sample_generations(
-            output_dir / "sample_generations.jsonl",
+        sample_rows = _write_sample_rollouts(
+            output_dir / "sample_rollouts.jsonl",
             resolved,
             examples=examples,
             dry_run=False,
@@ -314,7 +315,7 @@ def _to_grpo_rows(examples):
     return rows
 
 
-def _write_sample_generations(path, config, examples, dry_run, model=None, tokenizer=None):
+def _write_sample_rollouts(path, config, examples, dry_run, model=None, tokenizer=None):
     rows = []
     sample_count = min(int(config["rollout"]["sample_count"]), len(examples))
     selected = examples[:sample_count]
@@ -335,9 +336,10 @@ def _write_sample_generations(path, config, examples, dry_run, model=None, token
                 "sample_index": index,
                 "prompt": prompt,
                 "answer": answer,
-                "generation": generation,
+                "completion": generation,
                 "reward": reward_result.score,
-                "reward_reason": reward_result.reason,
+                "parsed_answer": reward_result.normalized_prediction,
+                "failure_reason": None if reward_result.score == 1.0 else reward_result.reason,
                 "parse_failure": reward_result.reason in PARSE_FAILURE_REASONS,
                 "completion_length": len(generation),
             }
@@ -376,11 +378,22 @@ def _generate_text(model, tokenizer, prompt, config):
 
 def _summarize_samples(sample_rows):
     if not sample_rows:
-        return {"reward_mean": None, "parse_failure_rate": None, "completion_length_mean": None}
+        return {
+            "reward_mean": None,
+            "reward_std": None,
+            "zero_reward_rate": None,
+            "perfect_reward_rate": None,
+            "parse_failure_rate": None,
+            "avg_completion_length": None,
+        }
+    rewards = [row["reward"] for row in sample_rows]
     return {
-        "reward_mean": sum(row["reward"] for row in sample_rows) / len(sample_rows),
+        "reward_mean": sum(rewards) / len(rewards),
+        "reward_std": statistics.pstdev(rewards),
+        "zero_reward_rate": sum(1 for reward in rewards if reward == 0.0) / len(rewards),
+        "perfect_reward_rate": sum(1 for reward in rewards if reward == 1.0) / len(rewards),
         "parse_failure_rate": sum(1 for row in sample_rows if row["parse_failure"]) / len(sample_rows),
-        "completion_length_mean": sum(row["completion_length"] for row in sample_rows) / len(sample_rows),
+        "avg_completion_length": sum(row["completion_length"] for row in sample_rows) / len(sample_rows),
     }
 
 
@@ -450,8 +463,11 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- reward version: `{resolved['reward_version']}`",
         f"- final loss: `{final_loss}`",
         f"- reward mean: `{metrics['reward_mean']}`",
+        f"- reward std: `{metrics['reward_std']}`",
+        f"- zero reward rate: `{metrics['zero_reward_rate']}`",
+        f"- perfect reward rate: `{metrics['perfect_reward_rate']}`",
         f"- parse failure rate: `{metrics['parse_failure_rate']}`",
-        f"- completion length mean: `{metrics['completion_length_mean']}`",
+        f"- avg completion length: `{metrics['avg_completion_length']}`",
         f"- dry run: `{resolved['dry_run']}`",
         f"- train examples: `{resolved['selection']['max_train_examples']}`",
         f"- max steps: `{resolved['training']['max_steps']}`",

@@ -70,3 +70,15 @@ Record training and eval runs here with links to run directories, run cards, res
 - Normalized train-set recall job: `6914743`, completed successfully.
 - Normalized answer recall: `32/32`; raw exact recall: `0/32` because Qwen3 generated an empty `<think>...</think>` block before the numeric answer.
 - Caveat: the in-training sample generation check produced repeated `user` tokens, so post-save adapter reload checks should be preferred for judging this run.
+
+## RLVR / GRPO Smoke
+
+- Config: `configs/rlvr/toy_math_grpo.yaml`
+- Command: `make rlvr-smoke`
+- Default mode: dry-run toy math smoke with synthetic RLVR JSONL generated under `runs/rlvr/toy_math_grpo/data/` when missing.
+- Output path: `runs/rlvr/toy_math_grpo/`
+- Reward version: `math_boxed_v001`
+- This is only an RL loop smoke test, not a model-quality result.
+- Required artifacts: `resolved_config.yaml`, `run_card.md`, `metrics.jsonl`, `eval_report.json`, `sample_rollouts.jsonl`, `trainer_log.jsonl`.
+- Required metrics: reward mean, reward std, zero reward rate, perfect reward rate, parse failure rate, and average completion length.
+- Real TRL GRPO training requires setting `dry_run: false`, installing compatible `trl`, `datasets`, `transformers`, and `peft`, and using an approved short GPU run.

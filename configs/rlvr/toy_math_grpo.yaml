@@ -1,0 +1,40 @@
+run_name: toy-math-grpo-smoke
+model_name_or_path: hf-internal-testing/tiny-random-gpt2
+data_path: runs/rlvr/toy_math_grpo/data/rlvr_smoke.jsonl
+output_dir: runs/rlvr/toy_math_grpo
+dry_run: true
+synthetic_data_if_missing: true
+smoke_run: true
+seed: 17
+torch_dtype: auto
+trust_remote_code: false
+enable_thinking: false
+reward_version: math_boxed_v001
+selection:
+  train_split: train
+  max_train_examples: 8
+training:
+  max_steps: 1
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 1
+  learning_rate: 0.000001
+  bf16: false
+  fp16: false
+  gradient_checkpointing: false
+  logging_steps: 1
+  save_steps: 1
+  save_total_limit: 1
+rollout:
+  num_generations: 2
+  max_completion_length: 16
+  temperature: 0.7
+  top_p: 0.95
+  top_k: 0
+  beta: 0.0
+  sample_count: 8
+peft:
+  method: lora
+  r: 4
+  lora_alpha: 8
+  lora_dropout: 0.0
+  target_modules: []

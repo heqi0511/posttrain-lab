@@ -34,7 +34,7 @@ sft-overfit32-qwen3:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_sft --config configs/sft/qwen3_0_6b_overfit32.yaml
 
 rlvr-smoke:
-	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_grpo --config configs/rlvr/grpo_smoke.yaml
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_grpo --config configs/rlvr/toy_math_grpo.yaml
 
 rlvr-smoke-qwen3:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_grpo --config configs/rlvr/qwen3_0_6b_grpo_smoke.yaml
