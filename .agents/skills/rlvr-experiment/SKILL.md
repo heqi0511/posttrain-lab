@@ -17,7 +17,7 @@ Do not use for SFT data formatting, reward semantic changes, eval metric changes
 2. Use TRL for the initial MVP; discuss verl migration only after data, rewards, and evals are stable.
 3. Run reward tests and eval baseline before RLVR smoke.
 4. Start with tiny prompt sets and short rollouts before expensive runs.
-5. Record rollout sampling, KL, reward version, policy checkpoint, and seed.
+5. Record rollout sampling, KL, reward version, policy checkpoint, seed, parse failure rate, and completion length summary.
 6. Compare against the frozen SFT baseline with unchanged eval settings.
 7. Request human review before server GPU runs or algorithm-defining changes.
 
@@ -43,11 +43,12 @@ python .agents/skills/rlvr-experiment/scripts/smoke_grpo.py <config>
 - Never tune eval prompts, labels, or metrics to improve RLVR results.
 - Never compare RLVR against a moving SFT baseline.
 - Never overwrite policy checkpoints, rollout logs, or failed generations.
+- Never report RLVR gains without parse failure rate and completion length distribution.
 
 ## Common Failure Modes
 
 - Reward hacking produces high reward but wrong answers.
-- KL, sampling, or reward scale changes are not recorded.
+- KL, sampling, reward scale, parse failure rate, or completion length changes are not recorded.
 - Verifier timeout or crash is interpreted as a valid low reward.
 - Rollout prompts leak validation or hidden eval content.
 - Baseline changes between SFT and RLVR comparison.

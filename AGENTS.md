@@ -1,4 +1,4 @@
-# AGENTS.md
+# Post-Training Agent Rules
 
 ## Principles
 
@@ -10,21 +10,31 @@
 
 ## Scope
 
-This repo prepares SFT and RLVR/GRPO workflows for approximately 5B-class models. Start with TRL MVPs; consider verl only after data, reward, and eval protocols are stable.
+This repo prepares post-training workflows for approximately 5B-class models. The intended path is data curation -> SFT format/domain learning -> reward/verifier hardening -> RLVR/GRPO correctness improvement -> eval regression. Start with TRL MVPs; consider verl only after data, reward, and eval protocols are stable.
 
 ## Non-Negotiable Rules
 
 - Do not implement or launch training code unless the user explicitly asks.
 - Do not modify `data/raw/` unless explicitly instructed.
 - Do not change train/val/test splits without updating `docs/knowledge/data_card.md` and asking for review.
-- Do not modify eval prompts, labels, metrics, or baselines to improve reported results.
+- Do not modify eval prompts, labels, answer extraction, metrics, baselines, filters, decoding settings, or aggregation to improve reported results.
+- Do not accept eval changes whose main effect is better metrics unless the change fixes a documented eval bug and has human review.
 - Do not expose hidden tests or ground-truth answers in prompts, training data, or reward fixtures.
 - Do not change reward semantics without tests and human review.
+- Do not patch rewards in response to RLVR failures without separating reward fixes from policy training.
 - Do not make network calls inside reward functions or verifiers.
 - Do not delete failed runs, bad metrics, or failure samples.
 - Do not overwrite prior runs; write new outputs to new run directories.
 - Do not commit secrets, API keys, model tokens, private data, or credentials.
 - Do not start long runs without explicit approval. Long runs include any server GPU job, local run expected to exceed 10 minutes, or command that downloads large models or datasets.
+
+## Responsibility Boundaries
+
+- Data work owns schema, provenance, deduplication, leakage checks, and split records.
+- SFT work owns format learning, supervised configs, overfit-32 gates, and SFT run artifacts.
+- Reward work owns deterministic verifier semantics, fixtures, reward hacking checks, and reward cards.
+- RLVR work owns rollout policy, KL/sampling settings, parse failure rate, completion length, and policy checkpoints.
+- Eval work owns frozen prompts, labels, extraction, metrics, baselines, and regression reports.
 
 ## Default Workflow
 
@@ -47,7 +57,7 @@ If a listed target does not exist yet, do not invent a hidden equivalent; report
 | Data schema or dataset staging | `make validate-data`, `make check-leakage` |
 | Reward or verifier | `make test-rewards` |
 | Eval harness, metrics, prompts | `make test-eval`, `make eval-baseline` |
-| SFT workflow | `make sft-smoke`, `make sft-overfit32` |
+| SFT workflow | `make sft-smoke`, `make sft-overfit32` before any larger run |
 | RLVR/GRPO workflow | `make rlvr-smoke`, `make test-rewards`, `make test-eval` |
 
 ## Human Review Required
@@ -56,7 +66,7 @@ Ask for review before:
 
 - changing base model family, tokenizer, chat template, or context length assumptions
 - changing reward semantics or reward aggregation
-- changing eval prompts, labels, metrics, or baseline comparison logic
+- changing eval prompts, labels, answer extraction, metrics, decoding settings, filters, or baseline comparison logic
 - changing train/val/test split logic
 - adding, removing, or materially filtering training datasets
 - launching any server GPU job or long local run
@@ -78,7 +88,8 @@ Every `run_card.md` must include:
 - base model, checkpoint or adapter path, and parent checkpoint if applicable
 - git commit, launch command, environment/dependency versions, hardware or server node
 - random seed, smoke/full-run label, start time, duration, and failure status if failed
-- data paths and hashes, config path and hash, reward version, eval version
+- data paths and hashes, config path and hash, reward version, eval version, decoding settings
+- for generation runs: parse failure rate and completion length summary
 - final metrics, representative failures, and known caveats
 
 ## Skill Map

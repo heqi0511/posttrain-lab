@@ -7,17 +7,17 @@ description: Use when running, changing, auditing, or comparing eval suites, met
 
 ## When to Use
 
-Use for eval harness changes, metric changes, answer extraction, baseline runs, regression comparisons, failure taxonomy updates, and eval-card maintenance.
+Use for eval harness changes, metric changes, answer extraction, decoding settings, baseline runs, regression comparisons, failure taxonomy updates, and eval-card maintenance.
 
 Do not use for training data edits, reward semantic changes, or training loop changes.
 
 ## Required Workflow
 
-1. Treat eval prompts, labels, metrics, and baseline logic as frozen unless review approves a change.
+1. Treat eval prompts, labels, answer extraction, metrics, decoding settings, filters, and baseline logic as frozen unless review approves a change.
 2. Confirm candidate and baseline runs use the same eval version.
 3. Run a small eval smoke before full evaluation.
 4. Report aggregate metrics and representative failures.
-5. Compare against prior baseline without changing prompts or answer keys.
+5. Compare against prior baseline without changing prompts, answer keys, decoding, extraction, filters, or aggregation.
 6. Update `docs/knowledge/eval_card.md` and `docs/knowledge/experiment_log.md` when eval behavior changes.
 7. Request human review before changing any eval-defining artifact.
 
@@ -38,6 +38,7 @@ python .agents/skills/eval-regression/scripts/compare_runs.py <baseline> <candid
 ## Invariants / Forbidden Actions
 
 - Never change eval prompts, labels, or metrics to make a model look better.
+- Never accept eval changes whose main effect is higher metrics unless a documented bug is fixed and reviewed.
 - Never expose hidden tests or labels in prompts, training data, or reward fixtures.
 - Never compare runs produced by different eval versions without saying so.
 - Never drop failed examples from reports.
@@ -50,7 +51,7 @@ python .agents/skills/eval-regression/scripts/compare_runs.py <baseline> <candid
 - Hidden answers leak into data, prompts, or reward fixtures.
 - Metric aggregation hides severe subgroup regressions.
 - Evaluation silently skips failed or timed-out examples.
-- Reported gains are within noise but described as decisive.
+- Reported gains come from changed extraction, filters, or aggregation rather than model behavior.
 
 ## References
 
