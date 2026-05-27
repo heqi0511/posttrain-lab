@@ -14,7 +14,23 @@ from posttrain_lab.data.schemas import (
     VALID_SPLITS,
     VERIFIER_REQUIRED_FIELDS,
     ValidationError,
+    ValidationReport,
 )
+
+
+def validate_file(path, dataset_type):
+    """Validate one SFT or RLVR JSONL file and return a structured report."""
+
+    if dataset_type not in {"sft", "rlvr"}:
+        raise ValueError(f"unknown dataset type: {dataset_type}")
+
+    path = Path(path)
+    errors = validate_jsonl(dataset_type, path)
+    return ValidationReport(
+        ok=not errors,
+        num_rows=_count_non_empty_lines(path),
+        errors=errors,
+    )
 
 
 def validate_jsonl(dataset_type, path):
@@ -105,7 +121,8 @@ def _validate_sft_record(record, path, line_number):
             errors.append(_error(path, line_number, f"invalid messages[{index}].role: {role}"))
         if role == "assistant":
             has_assistant = True
-        _validate_non_empty_string(message.get("content"), f"messages[{index}].content", path, line_number, errors)
+        content_field = f"{role} messages[{index}].content" if isinstance(role, str) else f"messages[{index}].content"
+        _validate_non_empty_string(message.get("content"), content_field, path, line_number, errors)
 
     if not has_assistant:
         errors.append(_error(path, line_number, "messages must include at least one assistant message"))
@@ -179,6 +196,15 @@ def _validate_object_fields(obj, required_fields, path, line_number, prefix=None
 def _validate_non_empty_string(value, field_name, path, line_number, errors):
     if not isinstance(value, str) or not value.strip():
         errors.append(_error(path, line_number, f"{field_name} must be non-empty"))
+
+
+def _count_non_empty_lines(path):
+    count = 0
+    with Path(path).open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            if raw_line.strip():
+                count += 1
+    return count
 
 
 def _error(path, line_number, message):

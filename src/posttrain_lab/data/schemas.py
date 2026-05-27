@@ -21,5 +21,20 @@ class ValidationError:
     line_number: int
     message: str
 
+    @property
+    def line(self):
+        """Line-number alias used by external test suites."""
+
+        return self.line_number
+
     def __str__(self):
         return f"{self.path}:{self.line_number}: {self.message}"
+
+
+@dataclass(frozen=True)
+class ValidationReport:
+    """Validation result for one JSONL file."""
+
+    ok: bool
+    num_rows: int
+    errors: list
