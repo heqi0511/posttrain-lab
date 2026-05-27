@@ -1,0 +1,12 @@
+prompt_path: /tmp/posttrain_lab_eval/baseline_prompts.jsonl
+output_dir: /tmp/posttrain_lab_eval/baseline_run
+dry_run: true
+model_name: dummy
+inference:
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 32
+  stop_tokens: []
+metrics:
+  exact_match: true
+  format_regex: ^\\boxed\{.+\}$
