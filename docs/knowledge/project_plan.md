@@ -16,12 +16,13 @@ This is the milestone tracker for the post-training repo. Update this file whene
 - [x] repo skeleton
 - [x] `AGENTS.md`
 - [x] skills
-- [ ] `Makefile`
+- [x] `Makefile`
 - [ ] CI smoke test
 
 Notes:
 - Repo skeleton, agent rules, and five skills are present.
-- `Makefile` and CI are not present yet.
+- `Makefile` is present with placeholder targets.
+- CI is not present yet.
 
 ## Milestone 1: Data and Eval
 
