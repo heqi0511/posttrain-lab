@@ -1,0 +1,40 @@
+run_name: qwen3-0.6b-grpo-smoke
+model_name_or_path: Qwen/Qwen3-0.6B
+data_path: runs/rlvr/qwen3_0_6b_grpo_smoke/data/rlvr_smoke.jsonl
+output_dir: runs/rlvr/qwen3_0_6b_grpo_smoke
+dry_run: false
+synthetic_data_if_missing: true
+smoke_run: true
+seed: 19
+torch_dtype: bfloat16
+trust_remote_code: false
+enable_thinking: false
+reward_version: math_boxed_v001
+selection:
+  train_split: train
+  max_train_examples: 8
+training:
+  max_steps: 1
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 1
+  learning_rate: 0.000001
+  bf16: true
+  fp16: false
+  gradient_checkpointing: false
+  logging_steps: 1
+  save_steps: 1
+  save_total_limit: 1
+rollout:
+  num_generations: 2
+  max_completion_length: 16
+  temperature: 0.8
+  top_p: 0.95
+  top_k: 0
+  beta: 0.0
+  sample_count: 4
+peft:
+  method: lora
+  r: 8
+  lora_alpha: 16
+  lora_dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]

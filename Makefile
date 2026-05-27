@@ -1,4 +1,4 @@
-.PHONY: format lint test test-rewards validate-data eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke
+.PHONY: format lint test test-rewards test-eval validate-data eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3
 
 format:
 	@echo "format placeholder: no formatter configured yet"
@@ -11,6 +11,9 @@ test:
 
 test-rewards:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q tests/test_math_reward.py
+
+test-eval:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q tests/test_eval_runner.py
 
 validate-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type sft --path tests/fixtures/sft_good.jsonl
@@ -31,4 +34,7 @@ sft-overfit32-qwen3:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_sft --config configs/sft/qwen3_0_6b_overfit32.yaml
 
 rlvr-smoke:
-	@echo "rlvr-smoke placeholder: RLVR training is not implemented yet"
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_grpo --config configs/rlvr/grpo_smoke.yaml
+
+rlvr-smoke-qwen3:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_grpo --config configs/rlvr/qwen3_0_6b_grpo_smoke.yaml
