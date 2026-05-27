@@ -37,6 +37,20 @@ Record training and eval runs here with links to run directories, run cards, res
 - Manual generation check saved `20` sampled generations. For arithmetic training prompts, generations generally returned the correct numeric answer after an empty `<think>...</think>` block.
 - Caveat: this run is superseded by the boxed-format smoke config because the fixed baseline eval prompt requests boxed format, but this earlier smoke data taught plain numeric answers.
 
+### 2026-05-27 Nexus Boxed-Format Smoke Run
+
+- Slurm job: `6915024` on `cbcb-heng`, RTX A6000, completed successfully in `00:05:36`.
+- Git commit: `7a25cad69f8553e44352af4e319acee1036a1620`.
+- Output path: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/7a25cad-sft-smoke1k-boxed/runs/sft/smoke_1k_boxed/`.
+- Train examples: `1000`; validation examples: `64`; max steps: `1000`.
+- Data format: synthetic addition examples requiring boxed final answers, generated under `runs/sft/smoke_1k_boxed/data/`.
+- First logged loss: `0.3065`; final trainer loss: `0.2657`; minimum logged step loss: `0.2291`.
+- Final validation loss: `0.2316`.
+- Eval-after-train on the fixed baseline eval: exact match `1.0`, format success `1.0`, parse failure rate `0.0`, average output length `9.0`.
+- Raw fixed-eval generation for `2 + 2`: `\boxed{4}`.
+- Manual generation check saved `20` sampled generations; all inspected samples used boxed answer format without `<think>...</think>` wrappers.
+- Note: this run fixes the previous target-eval mismatch by changing the smoke training target format and disabling Qwen thinking mode for generation/eval. It does not change fixed eval prompts, labels, metrics, or baseline comparison settings.
+
 ## Qwen3-0.6B Overfit-32
 
 - Config: `configs/sft/qwen3_0_6b_overfit32.yaml`
