@@ -82,3 +82,16 @@ Record training and eval runs here with links to run directories, run cards, res
 - Required artifacts: `resolved_config.yaml`, `run_card.md`, `metrics.jsonl`, `eval_report.json`, `sample_rollouts.jsonl`, `trainer_log.jsonl`.
 - Required metrics: reward mean, reward std, zero reward rate, perfect reward rate, parse failure rate, and average completion length.
 - Real TRL GRPO training requires setting `dry_run: false`, installing compatible `trl`, `datasets`, `transformers`, and `peft`, and using an approved short GPU run.
+
+### 2026-05-27 Nexus Qwen3-0.6B Real TRL Smoke
+
+- Slurm job: `6915223` on `cbcb-heng`, RTX A6000, completed successfully in `00:00:31`.
+- Git commit: `a1f3e7e801b8efa98cadb17e9802dd232c15d272`.
+- Config: `configs/rlvr/qwen3_0_6b_grpo_smoke.yaml`.
+- Output path: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/a1f3e7e-rlvr-grpo-smoke/runs/rlvr/qwen3_0_6b_grpo_smoke/`.
+- Train examples: `8`; max steps: `1`; num generations: `2`; max completion length: `16`.
+- Reward version: `math_boxed_v001`.
+- Metrics: reward mean `0.0`, reward std `0.0`, zero reward rate `1.0`, perfect reward rate `0.0`, parse failure rate `1.0`, average completion length `35.25`.
+- Trainer loop status: TRL `GRPOTrainer` ran and saved adapter/checkpoint artifacts successfully.
+- Rollout failure pattern: Qwen3-0.6B produced explanatory text and incomplete or non-final-only boxed expressions, e.g. `2 + 3 = 5\n\nFinal answer: $\\boxed{5}$`, which the tightened reward rejects as `boxed_not_final_only`.
+- Interpretation: this is a successful real RL loop smoke test, not a successful reward-learning result. Next RLVR smoke should either start from the boxed SFT adapter or use a prompt/generation setting that produces final-only boxed completions before increasing steps.
