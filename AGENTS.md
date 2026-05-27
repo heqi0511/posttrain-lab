@@ -27,6 +27,7 @@ This repo prepares post-training workflows for approximately 5B-class models. Th
 - Do not overwrite prior runs; write new outputs to new run directories.
 - Do not commit secrets, API keys, model tokens, private data, or credentials.
 - Do not start long runs without explicit approval. Long runs include any server GPU job, local run expected to exceed 10 minutes, or command that downloads large models or datasets.
+- Do not hand-edit experiment code on the server; server changes must be reproduced locally, committed, pushed, then checked out on the server.
 
 ## Responsibility Boundaries
 
@@ -46,6 +47,17 @@ For non-trivial work:
 4. Add or update deterministic tests when behavior changes.
 5. Run the required checks, or state clearly when a target does not exist yet.
 6. Summarize changed files, commands run, and remaining risks.
+
+## Code Sync And Server Runs
+
+- Treat the local repo as the only development source.
+- The standard path is: local edit -> local checks -> `git commit` -> `git push` -> server `git fetch`/`git checkout <commit>` -> Slurm run.
+- Server experiment code must run from a clean git worktree at a known commit.
+- Prefer checking out the exact commit recorded in the run card instead of relying on branch tip state.
+- Use `rsync` for data, logs, and result artifacts only; do not use it for code sync unless explicitly marked as an emergency workaround.
+- Before launching server training, verify server `git status --porcelain` is empty and `git rev-parse HEAD` matches the intended commit.
+- If a server-side debug change is necessary, copy the finding back into the local repo and repeat the commit/push/checkout path before treating results as canonical.
+- Generated outputs under `runs/` are experiment artifacts, not source code; do not commit them unless the user explicitly asks.
 
 ## Required Checks
 
