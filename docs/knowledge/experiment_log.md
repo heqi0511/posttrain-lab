@@ -25,6 +25,18 @@ Record training and eval runs here with links to run directories, run cards, res
 - The target first runs the fixed dry-run eval baseline, then runs eval-after-train on the saved adapter without modifying baseline eval config files.
 - Required checks: train loss, validation loss, format success, target eval score, average output length, and 20 sampled generations.
 
+### 2026-05-27 Nexus Real Smoke Run
+
+- Slurm job: `6914860` on `cbcb-heng`, RTX A6000, completed successfully in `00:05:34`.
+- Git commit: `4b052bc31422f0c2d3a8d7d32323c99b988c3259`.
+- Output path: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/4b052bc-sft-smoke1k-real/runs/sft/smoke_1k/`.
+- Train examples: `1000`; validation examples: `64`; max steps: `1000`.
+- First logged loss: `6.3056`; final trainer loss: `0.2896`; minimum logged loss: `0.2529`.
+- Final validation loss: `1.5160`.
+- Eval-after-train: exact match `0.0`, format success `0.0`, parse failure rate `1.0`, average output length `20.0`.
+- Manual generation check saved `20` sampled generations. For arithmetic training prompts, generations generally returned the correct numeric answer after an empty `<think>...</think>` block.
+- Caveat: the fixed baseline eval prompt requests boxed format, but the smoke SFT data teaches plain numeric answers, so the failed format/eval score is expected and is not evidence of regression by itself.
+
 ## Qwen3-0.6B Overfit-32
 
 - Config: `configs/sft/qwen3_0_6b_overfit32.yaml`
