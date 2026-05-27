@@ -96,12 +96,19 @@ Record training and eval runs here with links to run directories, run cards, res
 - Rollout failure pattern: Qwen3-0.6B produced explanatory text and incomplete or non-final-only boxed expressions, e.g. `2 + 3 = 5\n\nFinal answer: $\\boxed{5}$`, which the tightened reward rejects as `boxed_not_final_only`.
 - Interpretation: this is a successful real RL loop smoke test, not a successful reward-learning result. Next RLVR smoke should either start from the boxed SFT adapter or use a prompt/generation setting that produces final-only boxed completions before increasing steps.
 
-### Next Real RLVR Smoke Plan
+### 2026-05-27 Nexus Qwen3-0.6B SFT-Init TRL Smoke
 
-- Config: `configs/rlvr/qwen3_0_6b_grpo_smoke.yaml`
-- Planned source policy: `Qwen/Qwen3-0.6B` initialized from boxed SFT adapter at `runs/sft/smoke_1k_boxed`.
-- Output path: `runs/rlvr/qwen3_0_6b_grpo_smoke_sft_init/`.
-- Rollout max completion length: `32`.
-- Rollout-format gate: enabled before TRL GRPO training; gate blocks training if parse failure rate exceeds `0.0`.
-- Gate artifacts: `rollout_format_gate.json` and `rollout_format_gate.jsonl`.
-- Rationale: the prior base-model GRPO smoke completed the RL loop but produced all-zero rewards because completions were explanatory, truncated, or non-final-only boxed. The next run should verify format compliance from the SFT-initialized policy before spending GPU steps on GRPO.
+- Slurm job: `6915257` on `cbcb-heng`, RTX A6000, completed successfully in `00:01:08`.
+- Git commit: `cd324fea27a6dbfa6eb1a1f033e368ca7e0fd42c`.
+- Config: `configs/rlvr/qwen3_0_6b_grpo_smoke.yaml`.
+- Source policy: `Qwen/Qwen3-0.6B` initialized from boxed SFT adapter at `runs/sft/smoke_1k_boxed`.
+- Server adapter artifact: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/7a25cad-sft-smoke1k-boxed/runs/sft/smoke_1k_boxed/`.
+- Output path: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/cd324fe-rlvr-grpo-sft-init/runs/rlvr/qwen3_0_6b_grpo_smoke_sft_init/`.
+- Train examples: `8`; max steps: `1`; num generations: `2`; max completion length: `32`.
+- Reward version: `math_boxed_v001`.
+- Rollout-format gate: passed before TRL GRPO training with parse failure rate `0.0`, perfect reward rate `1.0`, zero reward rate `0.0`, reward mean `1.0`, reward std `0.0`, and average completion length `9.75`.
+- Training metrics: reward mean `1.0`, reward std `0.0`, zero reward rate `0.0`, perfect reward rate `1.0`, parse failure rate `0.0`, average completion length `9.75`, final loss `0.0`.
+- Sample rollouts were final-only boxed answers such as `\boxed{5}`, `\boxed{11}`, `\boxed{17}`, and `\boxed{23}` with parsed answers matching the verifier labels.
+- Trainer loop status: TRL `GRPOTrainer` ran from the SFT-initialized adapter and saved adapter/checkpoint artifacts successfully.
+- Interpretation: this verifies the rollout-format gate, SFT-adapter initialization path, and real TRL GRPO loop. It is still a smoke test, not a model-quality result.
+- Caveat: all sampled completions were already perfect, so reward std and advantages were `0.0`; the run did not provide a meaningful learning signal. The next non-smoke RLVR run needs harder or more varied prompts that preserve format compliance while producing nonzero reward variance.
