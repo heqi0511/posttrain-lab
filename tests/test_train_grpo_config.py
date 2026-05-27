@@ -41,6 +41,7 @@ def write_config(path, data_path, output_dir):
             [
                 "run_name: grpo-smoke-test",
                 "model_name_or_path: hf-internal-testing/tiny-random-gpt2",
+                "adapter_path: null",
                 f"data_path: {data_path}",
                 f"output_dir: {output_dir}",
                 "dry_run: true",
@@ -61,12 +62,16 @@ def write_config(path, data_path, output_dir):
                 "  learning_rate: 0.000001",
                 "rollout:",
                 "  num_generations: 2",
-                "  max_completion_length: 16",
+                "  max_completion_length: 32",
                 "  temperature: 0.7",
                 "  top_p: 0.95",
                 "  top_k: 0",
                 "  beta: 0.0",
                 "  sample_count: 4",
+                "rollout_format_gate:",
+                "  enabled: true",
+                "  sample_count: 4",
+                "  max_parse_failure_rate: 0.0",
                 "peft:",
                 "  method: lora",
                 "  r: 4",
@@ -90,9 +95,22 @@ def test_load_config_parses_grpo_smoke_fields(tmp_path):
 
     assert config["run_name"] == "grpo-smoke-test"
     assert config["reward_version"] == "math_boxed_v001"
+    assert config["adapter_path"] is None
     assert config["selection"]["max_train_examples"] == 4
     assert config["rollout"]["num_generations"] == 2
-    assert config["rollout"]["max_completion_length"] == 16
+    assert config["rollout"]["max_completion_length"] == 32
+    assert config["rollout_format_gate"]["enabled"] is True
+    assert config["rollout_format_gate"]["max_parse_failure_rate"] == 0.0
+
+
+def test_qwen3_smoke_config_uses_sft_adapter_and_format_gate():
+    config = load_config("configs/rlvr/qwen3_0_6b_grpo_smoke.yaml")
+
+    assert config["adapter_path"] == "runs/sft/smoke_1k_boxed"
+    assert config["rollout"]["max_completion_length"] == 32
+    assert config["rollout_format_gate"]["enabled"] is True
+    assert config["rollout_format_gate"]["max_parse_failure_rate"] == 0.0
+    assert "sft_init" in config["output_dir"]
 
 
 def test_load_rlvr_train_examples_selects_exact_train_records(tmp_path):
@@ -135,6 +153,8 @@ def test_dry_run_grpo_writes_required_artifacts(tmp_path):
     assert (output_dir / "run_card.md").exists()
     assert (output_dir / "metrics.jsonl").exists()
     assert (output_dir / "sample_rollouts.jsonl").exists()
+    assert (output_dir / "rollout_format_gate.json").exists()
+    assert (output_dir / "rollout_format_gate.jsonl").exists()
 
     sample_rollout = json.loads((output_dir / "sample_rollouts.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert set(sample_rollout) >= {
@@ -149,6 +169,8 @@ def test_dry_run_grpo_writes_required_artifacts(tmp_path):
 
     run_card = (output_dir / "run_card.md").read_text(encoding="utf-8")
     assert "reward version: `math_boxed_v001`" in run_card
+    assert "adapter path: `None`" in run_card
+    assert "rollout format gate parse failure rate: `0.0`" in run_card
     assert "parse failure rate: `0.0`" in run_card
     assert "avg completion length:" in run_card
 

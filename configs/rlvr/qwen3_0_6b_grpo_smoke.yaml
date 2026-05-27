@@ -1,7 +1,8 @@
-run_name: qwen3-0.6b-grpo-smoke
+run_name: qwen3-0.6b-grpo-smoke-sft-init
 model_name_or_path: Qwen/Qwen3-0.6B
-data_path: runs/rlvr/qwen3_0_6b_grpo_smoke/data/rlvr_smoke.jsonl
-output_dir: runs/rlvr/qwen3_0_6b_grpo_smoke
+adapter_path: runs/sft/smoke_1k_boxed
+data_path: runs/rlvr/qwen3_0_6b_grpo_smoke_sft_init/data/rlvr_smoke.jsonl
+output_dir: runs/rlvr/qwen3_0_6b_grpo_smoke_sft_init
 dry_run: false
 synthetic_data_if_missing: true
 smoke_run: true
@@ -26,12 +27,16 @@ training:
   save_total_limit: 1
 rollout:
   num_generations: 2
-  max_completion_length: 16
+  max_completion_length: 32
   temperature: 0.8
   top_p: 0.95
   top_k: 0
   beta: 0.0
   sample_count: 4
+rollout_format_gate:
+  enabled: true
+  sample_count: 4
+  max_parse_failure_rate: 0.0
 peft:
   method: lora
   r: 8

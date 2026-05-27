@@ -108,6 +108,28 @@ def run_grpo(config, config_path):
 
     _write_text(output_dir / "resolved_config.yaml", _dump_yaml(resolved))
 
+    gate_metrics = _run_rollout_format_gate(resolved, output_dir, examples)
+    if gate_metrics and not _rollout_format_gate_passed(resolved, gate_metrics):
+        _write_jsonl(
+            output_dir / "metrics.jsonl",
+            [
+                {
+                    "step": 0,
+                    "final_loss": None,
+                    "reward_version": resolved["reward_version"],
+                    "dry_run": resolved["dry_run"],
+                    "smoke_run": resolved["smoke_run"],
+                    "blocked_by_rollout_format_gate": True,
+                    **_prefixed_metrics("rollout_format_gate", gate_metrics),
+                }
+            ],
+        )
+        raise RuntimeError(
+            "rollout-format gate failed: "
+            f"parse_failure_rate={gate_metrics['parse_failure_rate']} "
+            f"> {resolved['rollout_format_gate']['max_parse_failure_rate']}"
+        )
+
     if resolved["dry_run"]:
         trainer_log = [{"step": 0, "loss": 0.0}, {"step": int(resolved["training"]["max_steps"]), "loss": 0.0}]
         _write_jsonl(output_dir / "trainer_log.jsonl", trainer_log)
@@ -140,6 +162,8 @@ def run_grpo(config, config_path):
             "smoke_run": resolved["smoke_run"],
         }
     )
+    if gate_metrics:
+        metrics.update(_prefixed_metrics("rollout_format_gate", gate_metrics))
     _write_jsonl(output_dir / "metrics.jsonl", [metrics])
     _write_text(output_dir / "eval_report.json", json.dumps(metrics, indent=2, sort_keys=True) + "\n")
     _write_run_card(
@@ -183,6 +207,7 @@ def _resolve_config(config):
     resolved.setdefault("torch_dtype", "auto")
     resolved.setdefault("trust_remote_code", False)
     resolved.setdefault("enable_thinking", None)
+    resolved.setdefault("adapter_path", None)
     resolved["selection"].setdefault("train_split", "train")
     resolved["selection"].setdefault("max_train_examples", 4)
     resolved["training"].setdefault("max_steps", 1)
@@ -202,6 +227,10 @@ def _resolve_config(config):
     resolved["rollout"].setdefault("top_k", 0)
     resolved["rollout"].setdefault("beta", 0.0)
     resolved["rollout"].setdefault("sample_count", 4)
+    resolved.setdefault("rollout_format_gate", {})
+    resolved["rollout_format_gate"].setdefault("enabled", False)
+    resolved["rollout_format_gate"].setdefault("sample_count", resolved["rollout"]["sample_count"])
+    resolved["rollout_format_gate"].setdefault("max_parse_failure_rate", 0.0)
     resolved.setdefault("peft", {})
     resolved["peft"].setdefault("method", "lora")
     resolved["peft"].setdefault("r", 4)
@@ -222,29 +251,11 @@ def _run_trl_grpo(config, examples, output_dir):
     _install_trl_fsdp_compat()
     try:
         from datasets import Dataset
-        from peft import LoraConfig
-        from transformers import AutoTokenizer
         from trl import GRPOConfig, GRPOTrainer
     except ImportError as exc:
         raise RuntimeError("TRL GRPO training requires transformers, datasets, trl, and peft") from exc
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        config["model_name_or_path"],
-        trust_remote_code=bool(config["trust_remote_code"]),
-    )
-    tokenizer.padding_side = "left"
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-
-    target_modules = config["peft"].get("target_modules") or None
-    peft_config = LoraConfig(
-        r=int(config["peft"]["r"]),
-        lora_alpha=int(config["peft"]["lora_alpha"]),
-        lora_dropout=float(config["peft"]["lora_dropout"]),
-        bias="none",
-        task_type="CAUSAL_LM",
-        target_modules=target_modules,
-    )
+    model, tokenizer, peft_config = _load_policy_model_and_tokenizer(config)
     train_dataset = Dataset.from_list(_to_grpo_rows(examples))
     args = GRPOConfig(
         output_dir=str(output_dir),
@@ -270,11 +281,11 @@ def _run_trl_grpo(config, examples, output_dir):
         beta=float(config["rollout"]["beta"]),
         log_completions=True,
         num_completions_to_print=int(config["rollout"]["num_generations"]),
-        model_init_kwargs=_model_load_kwargs(config),
+        model_init_kwargs=None,
         chat_template_kwargs=_chat_template_kwargs(config),
     )
     trainer = GRPOTrainer(
-        model=config["model_name_or_path"],
+        model=model,
         reward_funcs=math_boxed_reward_func,
         args=args,
         train_dataset=train_dataset,
@@ -284,6 +295,75 @@ def _run_trl_grpo(config, examples, output_dir):
     result = trainer.train()
     trainer.save_model(str(output_dir))
     return float(result.training_loss), trainer.state.log_history, trainer.model, tokenizer
+
+
+def _load_policy_model_and_tokenizer(config):
+    _install_trl_fsdp_compat()
+    try:
+        from peft import LoraConfig, PeftModel
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+    except ImportError as exc:
+        raise RuntimeError("policy loading requires transformers and peft") from exc
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        config["model_name_or_path"],
+        trust_remote_code=bool(config["trust_remote_code"]),
+    )
+    tokenizer.padding_side = "left"
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    model = AutoModelForCausalLM.from_pretrained(config["model_name_or_path"], **_model_load_kwargs(config))
+    if config.get("adapter_path"):
+        model = PeftModel.from_pretrained(model, config["adapter_path"], is_trainable=True)
+        return model, tokenizer, None
+
+    target_modules = config["peft"].get("target_modules") or None
+    peft_config = LoraConfig(
+        r=int(config["peft"]["r"]),
+        lora_alpha=int(config["peft"]["lora_alpha"]),
+        lora_dropout=float(config["peft"]["lora_dropout"]),
+        bias="none",
+        task_type="CAUSAL_LM",
+        target_modules=target_modules,
+    )
+    return model, tokenizer, peft_config
+
+
+def _run_rollout_format_gate(config, output_dir, examples):
+    if not config["rollout_format_gate"]["enabled"]:
+        return None
+
+    gate_config = copy.deepcopy(config)
+    gate_config["rollout"]["sample_count"] = int(config["rollout_format_gate"]["sample_count"])
+    if config["dry_run"]:
+        rows = _write_sample_rollouts(
+            output_dir / "rollout_format_gate.jsonl",
+            gate_config,
+            examples=examples,
+            dry_run=True,
+        )
+    else:
+        model, tokenizer, _ = _load_policy_model_and_tokenizer(config)
+        rows = _write_sample_rollouts(
+            output_dir / "rollout_format_gate.jsonl",
+            gate_config,
+            examples=examples,
+            dry_run=False,
+            model=model,
+            tokenizer=tokenizer,
+        )
+    metrics = _summarize_samples(rows)
+    _write_text(output_dir / "rollout_format_gate.json", json.dumps(metrics, indent=2, sort_keys=True) + "\n")
+    return metrics
+
+
+def _rollout_format_gate_passed(config, metrics):
+    return metrics["parse_failure_rate"] <= float(config["rollout_format_gate"]["max_parse_failure_rate"])
+
+
+def _prefixed_metrics(prefix, metrics):
+    return {f"{prefix}_{key}": value for key, value in metrics.items()}
 
 
 def _install_trl_fsdp_compat():
@@ -456,6 +536,7 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- smoke run: `{resolved['smoke_run']}`",
         "- finality: `smoke, not final`",
         f"- base model: `{resolved['model_name_or_path']}`",
+        f"- adapter path: `{resolved['adapter_path']}`",
         f"- data path: `{resolved['data_path']}`",
         f"- data hash: `{data_hash}`",
         f"- config hash: `{config_hash}`",
@@ -470,6 +551,8 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- perfect reward rate: `{metrics['perfect_reward_rate']}`",
         f"- parse failure rate: `{metrics['parse_failure_rate']}`",
         f"- avg completion length: `{metrics['avg_completion_length']}`",
+        f"- rollout format gate enabled: `{resolved['rollout_format_gate']['enabled']}`",
+        f"- rollout format gate parse failure rate: `{metrics.get('rollout_format_gate_parse_failure_rate')}`",
         f"- dry run: `{resolved['dry_run']}`",
         f"- train examples: `{resolved['selection']['max_train_examples']}`",
         f"- max steps: `{resolved['training']['max_steps']}`",

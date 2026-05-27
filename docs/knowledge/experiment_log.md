@@ -95,3 +95,13 @@ Record training and eval runs here with links to run directories, run cards, res
 - Trainer loop status: TRL `GRPOTrainer` ran and saved adapter/checkpoint artifacts successfully.
 - Rollout failure pattern: Qwen3-0.6B produced explanatory text and incomplete or non-final-only boxed expressions, e.g. `2 + 3 = 5\n\nFinal answer: $\\boxed{5}$`, which the tightened reward rejects as `boxed_not_final_only`.
 - Interpretation: this is a successful real RL loop smoke test, not a successful reward-learning result. Next RLVR smoke should either start from the boxed SFT adapter or use a prompt/generation setting that produces final-only boxed completions before increasing steps.
+
+### Next Real RLVR Smoke Plan
+
+- Config: `configs/rlvr/qwen3_0_6b_grpo_smoke.yaml`
+- Planned source policy: `Qwen/Qwen3-0.6B` initialized from boxed SFT adapter at `runs/sft/smoke_1k_boxed`.
+- Output path: `runs/rlvr/qwen3_0_6b_grpo_smoke_sft_init/`.
+- Rollout max completion length: `32`.
+- Rollout-format gate: enabled before TRL GRPO training; gate blocks training if parse failure rate exceeds `0.0`.
+- Gate artifacts: `rollout_format_gate.json` and `rollout_format_gate.jsonl`.
+- Rationale: the prior base-model GRPO smoke completed the RL loop but produced all-zero rewards because completions were explanatory, truncated, or non-final-only boxed. The next run should verify format compliance from the SFT-initialized policy before spending GPU steps on GRPO.
