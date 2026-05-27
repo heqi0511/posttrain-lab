@@ -159,3 +159,20 @@ Record training and eval runs here with links to run directories, run cards, res
 - Sample generations and rollouts were final-only boxed answers such as `\boxed{4}`, `\boxed{5}`, and `\boxed{11}`.
 - Failed setup attempts before the final run: job `6915931` stopped at the baseline parse-failure gate, and job `6915984` stopped because 2-step SFT still had parse failure rate `1.0`.
 - Caveat: this is still a toy smoke run. RLVR started from an already format-perfect SFT adapter, so reward std was `0.0` and the GRPO step did not provide meaningful learning pressure.
+
+### 2026-05-27 Nexus Qwen3-0.6B Diverse Math Real E2E Smoke
+
+- Slurm job: `6916399` on `cbcb-heng`, RTX A5000, completed successfully in `00:03:32`.
+- Git commit: `e57542b1974706b832e4cb3c795596cf93dc1c94`.
+- Output path: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/e57542b-e2e-diverse-sft-real/runs/e2e/diverse_math_posttraining_real/`.
+- Dataset version: `synthetic-e2e-diverse-v1`.
+- SFT staged data: `80` train and `10` validation examples covering arithmetic, fractions, linear equations, and algebra simplification across easy/medium/hard difficulties.
+- Heldout eval: `10` prompts, disjoint from SFT train and validation prompts.
+- SFT training: `300` max steps, final train loss `0.3376`, validation loss `0.3068`.
+- Base eval: exact match `0.0`, format success `0.0`, parse failure rate `1.0`, average output length `73.3`.
+- SFT eval: exact match `0.6`, format success `1.0`, parse failure rate `0.0`, average output length `10.6`.
+- SFT+RLVR eval: exact match `0.6`, format success `1.0`, parse failure rate `0.0`, average output length `10.6`.
+- RLVR smoke metrics: reward mean `0.9583`, reward std `0.1998`, zero reward rate `0.0417`, perfect reward rate `0.9583`, parse failure rate `0.0`, average completion length `10.25`.
+- SFT got integer arithmetic and algebra simplification examples correct, but missed heldout fraction addition and harder linear equations.
+- Interpretation: the enriched fixture is no longer trivially saturated by this small SFT run. It verifies format learning, but target accuracy is not yet maxed out.
+- Caveat: this is still a small synthetic smoke dataset, not a reliable benchmark. The Slurm script and run directory were untracked server artifacts; code ran from the recorded commit.
