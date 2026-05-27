@@ -112,3 +112,19 @@ Record training and eval runs here with links to run directories, run cards, res
 - Trainer loop status: TRL `GRPOTrainer` ran from the SFT-initialized adapter and saved adapter/checkpoint artifacts successfully.
 - Interpretation: this verifies the rollout-format gate, SFT-adapter initialization path, and real TRL GRPO loop. It is still a smoke test, not a model-quality result.
 - Caveat: all sampled completions were already perfect, so reward std and advantages were `0.0`; the run did not provide a meaningful learning signal. The next non-smoke RLVR run needs harder or more varied prompts that preserve format compliance while producing nonzero reward variance.
+
+## RLVR Small Math-1k
+
+- Config: `configs/rlvr/math_1k_grpo.yaml`
+- Command: `make rlvr-small`
+- Comparison command: `make compare-runs`
+- Intended policy: `Qwen/Qwen3-0.6B` initialized from boxed SFT adapter at `runs/sft/smoke_1k_boxed`.
+- Training set: synthetic RLVR JSONL generated at `runs/rlvr/math_1k_grpo/data/rlvr_math_1k.jsonl` when missing.
+- Problem style: mixed arithmetic requiring exactly one final boxed answer.
+- Output path: `runs/rlvr/math_1k_grpo/`.
+- Eval paths: `runs/rlvr/math_1k_grpo/evals/base`, `runs/rlvr/math_1k_grpo/evals/sft`, and `runs/rlvr/math_1k_grpo/evals/sft_rlvr`.
+- Comparison report: `runs/rlvr/math_1k_grpo/comparison_report.md`.
+- Failure cases: `runs/rlvr/math_1k_grpo/failure_cases.jsonl`.
+- Required comparison metrics: target accuracy, format success, parse failure rate, average output length, and general regression score when available.
+- Required interpretation: state whether SFT+RLVR improves heldout eval over SFT; training reward alone is not evidence of improvement.
+- Current status: implementation ready; no real small RLVR GPU run has been launched in this entry.

@@ -1,4 +1,4 @@
-.PHONY: format lint test test-rewards test-eval validate-data eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3
+.PHONY: format lint test test-rewards test-eval validate-data eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-small compare-runs
 
 format:
 	@echo "format placeholder: no formatter configured yet"
@@ -38,3 +38,9 @@ rlvr-smoke:
 
 rlvr-smoke-qwen3:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_grpo --config configs/rlvr/qwen3_0_6b_grpo_smoke.yaml
+
+rlvr-small: eval-baseline
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_grpo --config configs/rlvr/math_1k_grpo.yaml
+
+compare-runs:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.eval.compare_runs --base runs/rlvr/math_1k_grpo/evals/base --sft runs/rlvr/math_1k_grpo/evals/sft --rlvr runs/rlvr/math_1k_grpo/evals/sft_rlvr --output runs/rlvr/math_1k_grpo/comparison_report.md --failure-output runs/rlvr/math_1k_grpo/failure_cases.jsonl

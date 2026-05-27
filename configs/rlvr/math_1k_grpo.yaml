@@ -1,0 +1,61 @@
+run_name: math-1k-grpo-small
+model_name_or_path: Qwen/Qwen3-0.6B
+adapter_path: runs/sft/smoke_1k_boxed
+data_path: runs/rlvr/math_1k_grpo/data/rlvr_math_1k.jsonl
+output_dir: runs/rlvr/math_1k_grpo
+dry_run: false
+synthetic_data_if_missing: true
+synthetic_problem_style: mixed_arithmetic
+smoke_run: false
+seed: 23
+torch_dtype: bfloat16
+trust_remote_code: false
+enable_thinking: false
+reward_version: math_boxed_v001
+selection:
+  train_split: train
+  max_train_examples: 1000
+training:
+  max_steps: 100
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 1
+  learning_rate: 0.000001
+  bf16: true
+  fp16: false
+  gradient_checkpointing: true
+  logging_steps: 5
+  save_steps: 100
+  save_total_limit: 1
+rollout:
+  num_generations: 4
+  max_completion_length: 32
+  temperature: 0.8
+  top_p: 0.95
+  top_k: 0
+  beta: 0.0
+  sample_count: 50
+rollout_format_gate:
+  enabled: true
+  sample_count: 32
+  max_parse_failure_rate: 0.05
+eval_after_train:
+  enabled: true
+  prompt_path: /tmp/posttrain_lab_eval/baseline_prompts.jsonl
+  output_root: runs/rlvr/math_1k_grpo/evals
+  dry_run: false
+  model_name: Qwen/Qwen3-0.6B
+  torch_dtype: bfloat16
+  trust_remote_code: false
+  apply_chat_template: true
+  enable_thinking: false
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 32
+  exact_match: true
+  format_regex: ^\\boxed\{.+\}$
+peft:
+  method: lora
+  r: 8
+  lora_alpha: 16
+  lora_dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]

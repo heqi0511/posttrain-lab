@@ -9,6 +9,7 @@ import statistics
 from pathlib import Path
 
 from posttrain_lab.data.validate import validate_jsonl
+from posttrain_lab.eval.eval_runner import run_eval
 from posttrain_lab.rewards.math_reward import MathRewardConfig, math_boxed_v001, score_math_boxed_v001
 from posttrain_lab.train.train_sft import (
     _dump_yaml,
@@ -95,7 +96,11 @@ def run_grpo(config, config_path):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if resolved.get("synthetic_data_if_missing") and not data_path.exists():
-        _write_synthetic_rlvr_jsonl(data_path, train_count=resolved["selection"]["max_train_examples"])
+        _write_synthetic_rlvr_jsonl(
+            data_path,
+            train_count=resolved["selection"]["max_train_examples"],
+            problem_style=resolved["synthetic_problem_style"],
+        )
 
     examples = load_rlvr_train_examples(
         data_path,
@@ -151,7 +156,11 @@ def run_grpo(config, config_path):
             model=model,
             tokenizer=tokenizer,
         )
+        del model
+        del tokenizer
+        _empty_cuda_cache()
 
+    eval_outputs = _run_eval_after_grpo(resolved, output_dir)
     metrics = _summarize_samples(sample_rows)
     metrics.update(
         {
@@ -174,6 +183,7 @@ def run_grpo(config, config_path):
         git_commit=git_commit,
         final_loss=final_loss,
         metrics=metrics,
+        eval_outputs=eval_outputs,
     )
 
     result = dict(metrics)
@@ -183,6 +193,7 @@ def run_grpo(config, config_path):
             "data_hash": data_hash,
             "config_hash": config_hash,
             "git_commit": git_commit,
+            "eval_outputs": eval_outputs,
         }
     )
     return result
@@ -204,6 +215,7 @@ def _resolve_config(config):
     resolved.setdefault("run_name", "grpo-smoke")
     resolved.setdefault("smoke_run", True)
     resolved.setdefault("synthetic_data_if_missing", False)
+    resolved.setdefault("synthetic_problem_style", "addition")
     resolved.setdefault("torch_dtype", "auto")
     resolved.setdefault("trust_remote_code", False)
     resolved.setdefault("enable_thinking", None)
@@ -231,6 +243,21 @@ def _resolve_config(config):
     resolved["rollout_format_gate"].setdefault("enabled", False)
     resolved["rollout_format_gate"].setdefault("sample_count", resolved["rollout"]["sample_count"])
     resolved["rollout_format_gate"].setdefault("max_parse_failure_rate", 0.0)
+    resolved.setdefault("eval_after_train", {})
+    resolved["eval_after_train"].setdefault("enabled", False)
+    resolved["eval_after_train"].setdefault("prompt_path", "/tmp/posttrain_lab_eval/baseline_prompts.jsonl")
+    resolved["eval_after_train"].setdefault("output_root", str(Path(resolved["output_dir"]) / "evals"))
+    resolved["eval_after_train"].setdefault("dry_run", resolved["dry_run"])
+    resolved["eval_after_train"].setdefault("model_name", resolved["model_name_or_path"])
+    resolved["eval_after_train"].setdefault("torch_dtype", resolved["torch_dtype"])
+    resolved["eval_after_train"].setdefault("trust_remote_code", resolved["trust_remote_code"])
+    resolved["eval_after_train"].setdefault("apply_chat_template", True)
+    resolved["eval_after_train"].setdefault("enable_thinking", resolved.get("enable_thinking"))
+    resolved["eval_after_train"].setdefault("temperature", 0.0)
+    resolved["eval_after_train"].setdefault("top_p", 1.0)
+    resolved["eval_after_train"].setdefault("max_new_tokens", resolved["rollout"]["max_completion_length"])
+    resolved["eval_after_train"].setdefault("format_regex", r"^\\boxed\{.+\}$")
+    resolved["eval_after_train"].setdefault("exact_match", True)
     resolved.setdefault("peft", {})
     resolved["peft"].setdefault("method", "lora")
     resolved["peft"].setdefault("r", 4)
@@ -353,6 +380,9 @@ def _run_rollout_format_gate(config, output_dir, examples):
             model=model,
             tokenizer=tokenizer,
         )
+        del model
+        del tokenizer
+        _empty_cuda_cache()
     metrics = _summarize_samples(rows)
     _write_text(output_dir / "rollout_format_gate.json", json.dumps(metrics, indent=2, sort_keys=True) + "\n")
     return metrics
@@ -364,6 +394,88 @@ def _rollout_format_gate_passed(config, metrics):
 
 def _prefixed_metrics(prefix, metrics):
     return {f"{prefix}_{key}": value for key, value in metrics.items()}
+
+
+def _empty_cuda_cache():
+    try:
+        import gc
+        gc.collect()
+    except ImportError:
+        pass
+    try:
+        import torch
+    except ImportError:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def _run_eval_after_grpo(config, output_dir):
+    if not config["eval_after_train"]["enabled"]:
+        return {}
+
+    eval_config = config["eval_after_train"]
+    prompt_path = Path(eval_config["prompt_path"])
+    if eval_config["dry_run"] and not prompt_path.exists():
+        _write_default_eval_prompts(prompt_path)
+
+    output_root = Path(eval_config["output_root"])
+    runs = {
+        "base": None,
+        "sft": config.get("adapter_path"),
+        "sft_rlvr": str(output_dir),
+    }
+    results = {}
+    for run_name, adapter_path in runs.items():
+        run_config = _build_eval_config(config, run_name, adapter_path)
+        metrics = run_eval(run_config)
+        _empty_cuda_cache()
+        results[run_name] = {
+            "output_dir": str(output_root / run_name),
+            "adapter_path": adapter_path,
+            "metrics": metrics,
+        }
+    _write_text(output_dir / "eval_summary.json", json.dumps(results, indent=2, sort_keys=True) + "\n")
+    return results
+
+
+def _build_eval_config(config, run_name, adapter_path):
+    eval_config = config["eval_after_train"]
+    return {
+        "prompt_path": eval_config["prompt_path"],
+        "output_dir": str(Path(eval_config["output_root"]) / run_name),
+        "dry_run": eval_config["dry_run"],
+        "model_name": eval_config["model_name"],
+        "adapter_path": adapter_path,
+        "torch_dtype": eval_config["torch_dtype"],
+        "trust_remote_code": eval_config["trust_remote_code"],
+        "apply_chat_template": eval_config["apply_chat_template"],
+        "enable_thinking": eval_config["enable_thinking"],
+        "inference": {
+            "temperature": eval_config["temperature"],
+            "top_p": eval_config["top_p"],
+            "max_new_tokens": eval_config["max_new_tokens"],
+            "stop_tokens": [],
+        },
+        "metrics": {
+            "exact_match": eval_config["exact_match"],
+            "format_regex": eval_config["format_regex"],
+        },
+    }
+
+
+def _write_default_eval_prompts(path):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "id": "baseline-001",
+            "prompt": "Return the answer to 2 + 2 in boxed format.",
+            "answer": r"\boxed{4}",
+            "mock_generation": r"\boxed{4}",
+        }
+    ]
+    _write_jsonl(path, rows)
 
 
 def _install_trl_fsdp_compat():
@@ -479,13 +591,12 @@ def _summarize_samples(sample_rows):
     }
 
 
-def _write_synthetic_rlvr_jsonl(path, train_count):
+def _write_synthetic_rlvr_jsonl(path, train_count, problem_style="addition"):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = []
     for index in range(train_count):
-        left = 2 + (index % 19)
-        right = 3 + ((index * 5) % 23)
+        prompt, answer, difficulty = _synthetic_rlvr_problem(index, problem_style)
         rows.append(
             {
                 "id": f"rlvr-train-{index:04d}",
@@ -493,19 +604,61 @@ def _write_synthetic_rlvr_jsonl(path, train_count):
                 "prompt": [
                     {
                         "role": "user",
-                        "content": f"Compute {left} + {right}. Return only the final answer in boxed format.",
+                        "content": prompt,
                     }
                 ],
-                "verifier": {"type": "math_boxed_v001", "answer": str(left + right)},
+                "verifier": {"type": "math_boxed_v001", "answer": answer},
                 "metadata": {
-                    "source": "synthetic-rlvr-smoke",
+                    "source": f"synthetic-rlvr-{problem_style}",
                     "domain": "math",
-                    "difficulty": "easy",
+                    "difficulty": difficulty,
                     "license": "synthetic",
                 },
             }
         )
     _write_jsonl(path, rows)
+
+
+def _synthetic_rlvr_problem(index, problem_style):
+    if problem_style == "addition":
+        left = 2 + (index % 19)
+        right = 3 + ((index * 5) % 23)
+        return (
+            f"Compute {left} + {right}. Return only the final answer in boxed format.",
+            str(left + right),
+            "easy",
+        )
+    if problem_style == "mixed_arithmetic":
+        variant = index % 4
+        a = 2 + (index % 13)
+        b = 3 + ((index * 5) % 17)
+        c = 2 + ((index * 7) % 9)
+        if variant == 0:
+            return (
+                f"Compute {a} + {b} + {c}. Return only the final answer in boxed format.",
+                str(a + b + c),
+                "medium",
+            )
+        if variant == 1:
+            minuend = a + b + c
+            subtrahend = b
+            return (
+                f"Compute {minuend} - {subtrahend}. Return only the final answer in boxed format.",
+                str(minuend - subtrahend),
+                "medium",
+            )
+        if variant == 2:
+            return (
+                f"Compute {a} * {c}. Return only the final answer in boxed format.",
+                str(a * c),
+                "medium",
+            )
+        return (
+            f"Compute {a} + {b} * {c}. Return only the final answer in boxed format.",
+            str(a + b * c),
+            "medium",
+        )
+    raise ValueError(f"unsupported synthetic_problem_style: {problem_style}")
 
 
 def _prompt_text(prompt):
@@ -528,13 +681,14 @@ def _completion_to_text(completion):
     return str(completion)
 
 
-def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_loss, metrics):
+def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_loss, metrics, eval_outputs):
+    finality = "smoke, not final" if resolved["smoke_run"] else "small RLVR run, not final"
     lines = [
         "# GRPO Run Card",
         "",
         f"- run name: `{resolved['run_name']}`",
         f"- smoke run: `{resolved['smoke_run']}`",
-        "- finality: `smoke, not final`",
+        f"- finality: `{finality}`",
         f"- base model: `{resolved['model_name_or_path']}`",
         f"- adapter path: `{resolved['adapter_path']}`",
         f"- data path: `{resolved['data_path']}`",
@@ -561,7 +715,16 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- temperature: `{resolved['rollout']['temperature']}`",
         f"- top_p: `{resolved['rollout']['top_p']}`",
         f"- beta: `{resolved['rollout']['beta']}`",
+        f"- eval after train enabled: `{resolved['eval_after_train']['enabled']}`",
     ]
+    if eval_outputs:
+        lines.extend(
+            [
+                f"- base eval path: `{eval_outputs['base']['output_dir']}`",
+                f"- SFT eval path: `{eval_outputs['sft']['output_dir']}`",
+                f"- SFT+RLVR eval path: `{eval_outputs['sft_rlvr']['output_dir']}`",
+            ]
+        )
     _write_text(path, "\n".join(lines) + "\n")
 
 
