@@ -3,7 +3,11 @@
 
 import argparse
 import json
+import re
 from pathlib import Path
+
+
+THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", flags=re.DOTALL)
 
 
 def main():
@@ -35,6 +39,7 @@ def main():
     rows = []
     exact = 0
     prefix = 0
+    answer = 0
     for record in records:
         prompt = _first_message(record["messages"], "user")
         target = _first_message(record["messages"], "assistant").strip()
@@ -51,18 +56,25 @@ def main():
                 eos_token_id=tokenizer.eos_token_id,
             )
         generated = tokenizer.decode(outputs[0][inputs["input_ids"].shape[-1] :], skip_special_tokens=True).strip()
+        normalized_generation = _normalize_answer(generated)
+        normalized_target = _normalize_answer(target)
         exact_match = generated == target
         prefix_match = generated.startswith(target)
+        answer_match = normalized_generation == normalized_target
         exact += int(exact_match)
         prefix += int(prefix_match)
+        answer += int(answer_match)
         rows.append(
             {
                 "id": record["id"],
                 "prompt": prompt,
                 "target": target,
                 "generation": generated,
+                "normalized_generation": normalized_generation,
+                "normalized_target": normalized_target,
                 "exact_match": exact_match,
                 "prefix_match": prefix_match,
+                "answer_match": answer_match,
             }
         )
 
@@ -74,6 +86,8 @@ def main():
 
     summary = {
         "count": len(rows),
+        "answer": answer,
+        "answer_rate": answer / len(rows) if rows else 0.0,
         "exact": exact,
         "exact_rate": exact / len(rows) if rows else 0.0,
         "prefix": prefix,
@@ -111,6 +125,11 @@ def _generation_prompt(prompt, tokenizer):
         except ValueError:
             pass
     return prompt
+
+
+def _normalize_answer(text):
+    without_think = THINK_BLOCK_RE.sub("", text)
+    return " ".join(without_think.strip().split())
 
 
 if __name__ == "__main__":
