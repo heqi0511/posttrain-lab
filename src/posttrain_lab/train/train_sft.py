@@ -495,7 +495,7 @@ def _model_load_kwargs(config):
     kwargs = {"trust_remote_code": bool(config["trust_remote_code"])}
     dtype = _torch_dtype(config["torch_dtype"])
     if dtype is not None:
-        kwargs["torch_dtype"] = dtype
+        kwargs["dtype"] = dtype
     if config.get("attn_implementation"):
         kwargs["attn_implementation"] = config["attn_implementation"]
     return kwargs
