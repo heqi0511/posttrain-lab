@@ -174,7 +174,14 @@ def run_sft(config, config_path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Run a small SFT experiment with TRL SFTTrainer.")
     parser.add_argument("--config", required=True)
+    parser.add_argument("--dry-run", action="store_true", help="Write a dry-run plan and do not train.")
+    parser.add_argument("--output-dir", help="Override output directory for --dry-run plan artifacts.")
     args = parser.parse_args(argv)
+
+    if args.dry_run:
+        result = write_cli_dry_run_plan(args.config, args.output_dir, mode="sft")
+        print(json.dumps(result, sort_keys=True))
+        return 0
 
     config = load_config(args.config)
     result = run_sft(config, config_path=args.config)
@@ -241,6 +248,24 @@ def _resolve_config(config):
     if resolved["run_name"] == "sft-overfit32" and resolved["selection"]["max_train_examples"] != 32:
         raise ValueError("overfit-32 requires selection.max_train_examples == 32")
     return resolved
+
+
+def write_cli_dry_run_plan(config_path, output_dir=None, mode="training"):
+    """Write a small dry-run plan without loading a model or starting training."""
+
+    config = _load_yaml_subset(Path(config_path))
+    resolved_output_dir = Path(output_dir or config.get("output_dir", "runs/dry_run"))
+    resolved_output_dir.mkdir(parents=True, exist_ok=True)
+    plan = {
+        "mode": "dry_run",
+        "task": mode,
+        "config_path": str(config_path),
+        "output_dir": str(resolved_output_dir),
+        "will_train": False,
+        "will_load_model": False,
+    }
+    _write_text(resolved_output_dir / "dry_run_plan.json", json.dumps(plan, indent=2, sort_keys=True) + "\n")
+    return plan
 
 
 def _run_trl_training(config, train_examples, validation_examples, output_dir):

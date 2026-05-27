@@ -37,6 +37,15 @@ class MathRewardResult:
     normalized_answer: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class RewardResult:
+    """Compatibility reward result for starter test-suite APIs."""
+
+    reward: float
+    parsed_answer: Optional[str]
+    failure_reason: Optional[str]
+
+
 def math_boxed_v001(
     completion: str,
     answer: str,
@@ -54,6 +63,33 @@ def math_boxed_v001(
             max_answer_chars=base.max_answer_chars,
         )
     return score_math_boxed_v001(completion, answer, config=config).score
+
+
+def score_math_boxed(completion: str, expected_answer: str, symbolic: bool = False) -> RewardResult:
+    """Compatibility wrapper that keeps the strict v001 reward unchanged.
+
+    The project training path uses ``math_boxed_v001``. This wrapper exists for
+    older tests and tools that score any well-formed boxed answer and allow
+    repeated identical boxed answers.
+    """
+
+    boxed_answers, malformed = _extract_boxed_answers_with_status(completion)
+    if malformed:
+        return RewardResult(0.0, None, "malformed_boxed_answer")
+    if not boxed_answers:
+        return RewardResult(0.0, None, "no_boxed_answer")
+
+    normalized_boxes = [normalize_math_answer(value) for value in boxed_answers]
+    if len(set(normalized_boxes)) > 1:
+        return RewardResult(0.0, normalized_boxes[-1], "conflicting_boxed_answers")
+
+    parsed_answer = normalized_boxes[-1]
+    normalized_expected = normalize_math_answer(expected_answer)
+    if parsed_answer == normalized_expected:
+        return RewardResult(1.0, parsed_answer, None)
+    if symbolic and _symbolically_equivalent(parsed_answer, normalized_expected):
+        return RewardResult(1.0, parsed_answer, None)
+    return RewardResult(0.0, parsed_answer, "answer_mismatch")
 
 
 def score_math_boxed_v001(

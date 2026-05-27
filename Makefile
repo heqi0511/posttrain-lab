@@ -1,4 +1,4 @@
-.PHONY: format lint test test-rewards test-eval validate-data eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-small compare-runs
+.PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-small compare-runs
 
 format:
 	@echo "format placeholder: no formatter configured yet"
@@ -18,6 +18,9 @@ test-eval:
 validate-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type sft --path tests/fixtures/sft_good.jsonl
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type rlvr --path tests/fixtures/rlvr_good.jsonl
+
+check-leakage:
+	@echo "check-leakage placeholder: no leakage checker configured yet"
 
 eval-baseline:
 	@mkdir -p /tmp/posttrain_lab_eval

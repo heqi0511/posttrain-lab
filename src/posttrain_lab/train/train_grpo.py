@@ -20,6 +20,7 @@ from posttrain_lab.train.train_sft import (
     _sha256_file,
     _write_jsonl,
     _write_text,
+    write_cli_dry_run_plan,
 )
 
 
@@ -202,7 +203,14 @@ def run_grpo(config, config_path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Run a minimal GRPO smoke experiment.")
     parser.add_argument("--config", required=True)
+    parser.add_argument("--dry-run", action="store_true", help="Write a dry-run plan and do not train.")
+    parser.add_argument("--output-dir", help="Override output directory for --dry-run plan artifacts.")
     args = parser.parse_args(argv)
+
+    if args.dry_run:
+        result = write_cli_dry_run_plan(args.config, args.output_dir, mode="grpo")
+        print(json.dumps(result, sort_keys=True))
+        return 0
 
     config = load_config(args.config)
     result = run_grpo(config, config_path=args.config)
