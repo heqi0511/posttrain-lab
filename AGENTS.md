@@ -48,6 +48,18 @@ For non-trivial work:
 5. Run the required checks, or state clearly when a target does not exist yet.
 6. Summarize changed files, commands run, and remaining risks.
 
+## Post-Change Report
+
+After modifying code, configs, docs, or experiment scripts, explain the change in beginner-friendly Chinese. Include:
+
+1. Which files changed, and what each file is for.
+2. Whether the task goal was completed.
+3. Which acceptance criteria passed, failed, or were not applicable.
+4. Which commands were run and what the results were.
+5. Whether `data/raw`, eval prompts, reward semantics, or train/val/test splits changed.
+6. Remaining risks or caveats.
+7. Which files the user should open to review.
+
 ## Code Sync And Server Runs
 
 - Treat the local repo as the only development source.
