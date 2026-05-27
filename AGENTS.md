@@ -70,6 +70,7 @@ After modifying code, configs, docs, or experiment scripts, explain the change i
 - Before launching server training, verify server `git status --porcelain` is empty and `git rev-parse HEAD` matches the intended commit.
 - If a server-side debug change is necessary, copy the finding back into the local repo and repeat the commit/push/checkout path before treating results as canonical.
 - Generated outputs under `runs/` are experiment artifacts, not source code; do not commit them unless the user explicitly asks.
+- Standard Nexus `ssh -o ...` inspection commands may run without separate confirmation; still ask before destructive commands, job cancellation, server GPU jobs, long runs, or commands that change experiment-defining state.
 
 ## Required Checks
 
