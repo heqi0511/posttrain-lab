@@ -1,0 +1,2 @@
+{"id":"e2e-sft-seed-001","split":"train","messages":[{"role":"user","content":"Compute 2 + 2. Return only the final answer in boxed format."},{"role":"assistant","content":"\\boxed{4}"}],"metadata":{"source":"synthetic-e2e","domain":"math","difficulty":"easy","license":"synthetic"}}
+{"id":"e2e-sft-seed-002","split":"val","messages":[{"role":"user","content":"Compute 3 + 4. Return only the final answer in boxed format."},{"role":"assistant","content":"\\boxed{7}"}],"metadata":{"source":"synthetic-e2e","domain":"math","difficulty":"easy","license":"synthetic"}}

@@ -1,0 +1,2 @@
+{"id":"e2e-eval-001","prompt":"Compute 2 + 2. Return only the final answer in boxed format.","answer":"\\boxed{4}","mock_generation":"\\boxed{4}"}
+{"id":"e2e-eval-002","prompt":"Compute 3 + 4. Return only the final answer in boxed format.","answer":"\\boxed{7}","mock_generation":"\\boxed{7}"}

@@ -1,0 +1,20 @@
+run_name: toy-math-posttraining-e2e
+output_dir: runs/e2e/toy_math_posttraining
+model_name_or_path: hf-internal-testing/tiny-random-gpt2
+real_model_name_or_path: Qwen/Qwen3-0.6B
+sft_seed_path: data/fixtures/e2e/sft_seed.jsonl
+rlvr_seed_path: data/fixtures/e2e/rlvr_seed.jsonl
+eval_prompt_path: data/fixtures/e2e/eval_math.jsonl
+seed: 31
+torch_dtype: auto
+trust_remote_code: false
+enable_thinking: false
+limits:
+  max_output_length: 128
+  max_parse_failure_rate: 0.0
+  sft_train_examples: 32
+  sft_val_examples: 2
+  rlvr_train_examples: 8
+  sft_max_steps: 2
+  rlvr_max_steps: 1
+  eval_max_new_tokens: 32

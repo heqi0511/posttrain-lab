@@ -1,4 +1,4 @@
-.PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-small compare-runs
+.PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-small compare-runs e2e-smoke
 
 format:
 	@echo "format placeholder: no formatter configured yet"
@@ -47,3 +47,6 @@ rlvr-small: eval-baseline
 
 compare-runs:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.eval.compare_runs --base runs/rlvr/math_1k_grpo/evals/base --sft runs/rlvr/math_1k_grpo/evals/sft --rlvr runs/rlvr/math_1k_grpo/evals/sft_rlvr --output runs/rlvr/math_1k_grpo/comparison_report.md --failure-output runs/rlvr/math_1k_grpo/failure_cases.jsonl
+
+e2e-smoke:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.pipelines.e2e_smoke --config configs/e2e/toy_math_posttraining.yaml $(if $(REAL_RUN),--real-run,)

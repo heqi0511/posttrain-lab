@@ -128,3 +128,16 @@ Record training and eval runs here with links to run directories, run cards, res
 - Required comparison metrics: target accuracy, format success, parse failure rate, average output length, and general regression score when available.
 - Required interpretation: state whether SFT+RLVR improves heldout eval over SFT; training reward alone is not evidence of improvement.
 - Current status: implementation ready; no real small RLVR GPU run has been launched in this entry.
+
+## E2E Toy Math Post-Training Smoke
+
+- Config: `configs/e2e/toy_math_posttraining.yaml`
+- Command: `make e2e-smoke`
+- Real-run command: `make e2e-smoke REAL_RUN=1`
+- Default mode: safe dry-run with tiny fixtures; it does not load a model or start GPU training.
+- Real-run model path: `Qwen/Qwen3-0.6B` from config, only used with the explicit real-run flag.
+- Pipeline stages: validate SFT/RLVR data, eval base, SFT overfit-32, eval SFT, reward checks, RLVR/GRPO toy smoke, eval RLVR, and write base/SFT/SFT+RLVR comparison.
+- Output path: `runs/e2e/toy_math_posttraining/`.
+- Required root artifacts: `baseline_eval_report.json`, `sft_run_card.md`, `sft_eval_report.json`, `rlvr_run_card.md`, `rlvr_eval_report.json`, `comparison_report.md`, `sample_generations.jsonl`, and `sample_rollouts.jsonl`.
+- Fail-fast gates: data validation errors, reward check failures, output length above config, or parse failure rate above config.
+- Current status: implementation ready for safe-mode CI smoke; real model run has not been launched in this entry.

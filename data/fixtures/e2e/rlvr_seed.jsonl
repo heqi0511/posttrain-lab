@@ -1,0 +1,2 @@
+{"id":"e2e-rlvr-seed-001","split":"train","prompt":[{"role":"user","content":"Compute 2 + 3. Return only the final answer in boxed format."}],"verifier":{"type":"math_boxed_v001","answer":"5"},"metadata":{"source":"synthetic-e2e","domain":"math","difficulty":"easy","license":"synthetic"}}
+{"id":"e2e-rlvr-seed-002","split":"val","prompt":[{"role":"user","content":"Compute 4 + 5. Return only the final answer in boxed format."}],"verifier":{"type":"math_boxed_v001","answer":"9"},"metadata":{"source":"synthetic-e2e","domain":"math","difficulty":"easy","license":"synthetic"}}
