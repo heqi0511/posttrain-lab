@@ -1,4 +1,4 @@
-.PHONY: format lint test validate-data eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke
+.PHONY: format lint test test-rewards validate-data eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke
 
 format:
 	@echo "format placeholder: no formatter configured yet"
@@ -8,6 +8,9 @@ lint:
 
 test:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q
+
+test-rewards:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q tests/test_math_reward.py
 
 validate-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type sft --path tests/fixtures/sft_good.jsonl

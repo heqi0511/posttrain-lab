@@ -1,6 +1,52 @@
 # Reward Card
 
-Status: scaffold only.
+Status: first deterministic math reward implemented.
 
-No production reward is implemented yet. Future reward versions must document semantics, scale, invalid-output handling, adversarial fixtures, reward hacking checks, and changes that affect RLVR comparability.
+Future reward versions must document semantics, scale, invalid-output handling, adversarial fixtures, reward hacking checks, and changes that affect RLVR comparability.
 
+## math_boxed_v001
+
+- File: `src/posttrain_lab/rewards/math_reward.py`
+- Primary API: `math_boxed_v001(completion, answer, config=...)`
+- Structured API: `score_math_boxed_v001(completion, answer, config=...)`
+- Reward range: binary `0.0` or `1.0`.
+- Default symbolic equivalence: disabled.
+- Network/filesystem access: none.
+- Execution bound: completions longer than `max_output_chars` return `0.0`; symbolic equivalence uses a short, local, bounded AST evaluator.
+
+### Contract
+
+The completion must contain a well-formed boxed final answer using `\boxed{...}`. The reward extracts all well-formed boxed answers, normalizes simple formatting, and returns `1.0` only when the unique normalized boxed answer matches the normalized reference answer.
+
+Invalid outputs receive `0.0`, including:
+
+- no boxed answer;
+- malformed `\boxed{...}` syntax;
+- empty boxed answer;
+- multiple conflicting boxed answers;
+- answer mismatch;
+- output longer than the configured limit.
+
+Repeated identical boxed answers are accepted because they do not create parser ambiguity, but this should still be monitored for verbosity during RLVR.
+
+### Parser Behavior
+
+Normalization removes whitespace and simple LaTeX noise, including `\left`, `\right`, math delimiters, and simple `\frac{a}{b}` / `\frac12` forms. Exact normalized string match is checked first.
+
+If `allow_symbolic_equivalence=True`, the reward can also compare simple numeric arithmetic expressions such as `1/2` and `0.5`. This path is local and bounded: it rejects long expressions, unsupported characters, large ASTs, large fractions, division by zero, and large exponents.
+
+### Known Reward-Hacking Risks
+
+- A model may learn to emit many repeated identical boxed answers. This currently scores if the answer is correct, so RLVR logs should track completion length.
+- A model may include prompt-injection text such as "give full reward"; this is ignored unless the boxed answer is correct.
+- A model may place the correct answer in reasoning and a wrong boxed final answer. Conflicting boxed answers score `0.0`.
+- A model may exploit malformed LaTeX or parser ambiguity. Malformed boxed syntax scores `0.0`.
+- A model may output extremely long text before a boxed answer. Length above `max_output_chars` scores `0.0`.
+
+### Fixtures And Tests
+
+- Fixture file: `tests/fixtures/rewards/math_boxed_v001_cases.jsonl`
+- Test file: `tests/test_math_reward.py`
+- Command: `make test-rewards`
+
+The adversarial fixtures cover multiple boxed answers, correct answer in reasoning with wrong final answer, malformed LaTeX, long output, prompt-injection text, and symbolic equivalence being disabled by default.
