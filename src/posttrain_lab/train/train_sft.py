@@ -70,7 +70,7 @@ def run_sft(config, config_path):
     output_dir = Path(resolved["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    if resolved.get("dry_run") and resolved.get("synthetic_data_if_missing") and not data_path.exists():
+    if resolved.get("synthetic_data_if_missing") and not data_path.exists():
         _write_synthetic_sft_jsonl(
             data_path,
             train_count=resolved["selection"]["max_train_examples"],
@@ -195,11 +195,20 @@ def _resolve_config(config):
     resolved["training"].setdefault("gradient_accumulation_steps", 1)
     resolved["training"].setdefault("learning_rate", 2e-4)
     resolved["training"].setdefault("max_seq_length", 512)
+    resolved["training"].setdefault("bf16", False)
+    resolved["training"].setdefault("fp16", False)
+    resolved["training"].setdefault("gradient_checkpointing", False)
+    resolved["training"].setdefault("warmup_steps", 0)
+    resolved["training"].setdefault("save_total_limit", 2)
     resolved["peft"].setdefault("method", "lora")
     resolved["peft"].setdefault("qlora", False)
     resolved["peft"].setdefault("r", 8)
     resolved["peft"].setdefault("lora_alpha", 16)
     resolved["peft"].setdefault("lora_dropout", 0.0)
+    resolved["peft"].setdefault("target_modules", [])
+    resolved.setdefault("torch_dtype", "auto")
+    resolved.setdefault("trust_remote_code", False)
+    resolved.setdefault("attn_implementation", None)
     resolved["generation_check"].setdefault("max_new_tokens", 32)
     resolved["generation_check"].setdefault("prompts", [])
     resolved["generation_check"].setdefault("random_sample_count", 0)
@@ -225,33 +234,45 @@ def _run_trl_training(config, train_examples, validation_examples, output_dir):
     try:
         from datasets import Dataset
         from peft import LoraConfig, prepare_model_for_kbit_training
-        from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
-        from trl import SFTTrainer
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from trl import SFTConfig, SFTTrainer
     except ImportError as exc:
         raise RuntimeError("TRL SFT training requires transformers, datasets, trl, and peft") from exc
 
-    tokenizer = AutoTokenizer.from_pretrained(config["model_name_or_path"])
+    tokenizer = AutoTokenizer.from_pretrained(
+        config["model_name_or_path"],
+        trust_remote_code=bool(config["trust_remote_code"]),
+    )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model_kwargs = {}
+    model_kwargs = _model_load_kwargs(config)
     if config["peft"]["qlora"]:
         try:
             from transformers import BitsAndBytesConfig
         except ImportError as exc:
             raise RuntimeError("QLoRA requires BitsAndBytesConfig from transformers") from exc
-        model_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True)
+        model_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_compute_dtype=_bnb_compute_dtype(config["torch_dtype"]),
+        )
 
     model = AutoModelForCausalLM.from_pretrained(config["model_name_or_path"], **model_kwargs)
+    if bool(config["training"]["gradient_checkpointing"]) and hasattr(model.config, "use_cache"):
+        model.config.use_cache = False
     if config["peft"]["qlora"]:
         model = prepare_model_for_kbit_training(model)
 
+    target_modules = config["peft"].get("target_modules") or None
     peft_config = LoraConfig(
         r=int(config["peft"]["r"]),
         lora_alpha=int(config["peft"]["lora_alpha"]),
         lora_dropout=float(config["peft"]["lora_dropout"]),
         bias="none",
         task_type="CAUSAL_LM",
+        target_modules=target_modules,
     )
     train_dataset = Dataset.from_list(
         [{"text": _messages_to_text(example["messages"], tokenizer)} for example in train_examples]
@@ -259,26 +280,33 @@ def _run_trl_training(config, train_examples, validation_examples, output_dir):
     eval_dataset = Dataset.from_list(
         [{"text": _messages_to_text(example["messages"], tokenizer)} for example in validation_examples]
     )
-    args = TrainingArguments(
+    args = SFTConfig(
         output_dir=str(output_dir),
         max_steps=int(config["training"]["max_steps"]),
         per_device_train_batch_size=int(config["training"]["per_device_train_batch_size"]),
         gradient_accumulation_steps=int(config["training"]["gradient_accumulation_steps"]),
         learning_rate=float(config["training"]["learning_rate"]),
+        warmup_steps=int(config["training"]["warmup_steps"]),
         logging_steps=1,
-        evaluation_strategy="steps" if validation_examples else "no",
+        logging_first_step=True,
+        eval_strategy="steps" if validation_examples else "no",
         eval_steps=1 if validation_examples else None,
         save_steps=int(config["training"]["max_steps"]),
-        report_to=[],
+        save_total_limit=int(config["training"]["save_total_limit"]),
+        report_to="none",
         seed=int(config["seed"]),
+        bf16=bool(config["training"]["bf16"]),
+        fp16=bool(config["training"]["fp16"]),
+        gradient_checkpointing=bool(config["training"]["gradient_checkpointing"]),
+        dataset_text_field="text",
+        max_length=int(config["training"]["max_seq_length"]),
+        packing=False,
     )
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset if validation_examples else None,
-        dataset_text_field="text",
-        max_seq_length=int(config["training"]["max_seq_length"]),
         args=args,
         peft_config=peft_config,
     )
@@ -293,7 +321,10 @@ def _run_trl_training(config, train_examples, validation_examples, output_dir):
 
 def _messages_to_text(messages, tokenizer):
     if hasattr(tokenizer, "apply_chat_template"):
-        return tokenizer.apply_chat_template(messages, tokenize=False)
+        try:
+            return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False)
+        except TypeError:
+            return tokenizer.apply_chat_template(messages, tokenize=False)
     return "\n".join(f"{message['role']}: {message['content']}" for message in messages)
 
 
@@ -444,7 +475,8 @@ def _generate_text(model, tokenizer, prompt, max_new_tokens):
     except ImportError:
         torch = None
 
-    inputs = tokenizer(prompt, return_tensors="pt")
+    prompt_text = _generation_prompt_to_text(prompt, tokenizer)
+    inputs = tokenizer(prompt_text, return_tensors="pt")
     if hasattr(model, "device"):
         inputs = {key: value.to(model.device) for key, value in inputs.items()}
 
@@ -457,6 +489,62 @@ def _generate_text(model, tokenizer, prompt, max_new_tokens):
     prompt_length = inputs["input_ids"].shape[-1]
     generated = outputs[0][prompt_length:]
     return tokenizer.decode(generated, skip_special_tokens=True)
+
+
+def _model_load_kwargs(config):
+    kwargs = {"trust_remote_code": bool(config["trust_remote_code"])}
+    dtype = _torch_dtype(config["torch_dtype"])
+    if dtype is not None:
+        kwargs["torch_dtype"] = dtype
+    if config.get("attn_implementation"):
+        kwargs["attn_implementation"] = config["attn_implementation"]
+    return kwargs
+
+
+def _torch_dtype(name):
+    if name in {None, "auto"}:
+        return "auto" if name == "auto" else None
+    try:
+        import torch
+    except ImportError as exc:
+        raise RuntimeError("torch is required for non-auto torch_dtype settings") from exc
+    aliases = {
+        "bfloat16": torch.bfloat16,
+        "bf16": torch.bfloat16,
+        "float16": torch.float16,
+        "fp16": torch.float16,
+        "float32": torch.float32,
+        "fp32": torch.float32,
+    }
+    if name not in aliases:
+        raise ValueError(f"unsupported torch_dtype: {name}")
+    return aliases[name]
+
+
+def _bnb_compute_dtype(name):
+    dtype = _torch_dtype(name)
+    if dtype != "auto":
+        return dtype
+    try:
+        import torch
+    except ImportError as exc:
+        raise RuntimeError("torch is required for QLoRA compute dtype settings") from exc
+    return torch.bfloat16
+
+
+def _generation_prompt_to_text(prompt, tokenizer):
+    if hasattr(tokenizer, "apply_chat_template"):
+        try:
+            return tokenizer.apply_chat_template(
+                [{"role": "user", "content": prompt}],
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        except TypeError:
+            return tokenizer.apply_chat_template([{"role": "user", "content": prompt}], tokenize=False)
+        except ValueError:
+            return prompt
+    return prompt
 
 
 def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_loss, metrics):
