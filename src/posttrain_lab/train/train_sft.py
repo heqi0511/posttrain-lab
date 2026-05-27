@@ -1,13 +1,15 @@
-"""SFT overfit-32 pipeline using TRL SFTTrainer and PEFT adapters."""
+"""Small SFT pipelines using TRL SFTTrainer and PEFT adapters."""
 
 import argparse
 import copy
 import hashlib
 import json
+import random
 import subprocess
 from pathlib import Path
 
 from posttrain_lab.data.validate import validate_jsonl
+from posttrain_lab.eval.eval_runner import run_eval
 
 
 REQUIRED_TOP_LEVEL = {
@@ -34,6 +36,12 @@ def load_config(path):
 
 
 def load_sft_train_examples(path, split="train", limit=32):
+    """Validate and load exactly ``limit`` SFT examples from the requested split."""
+
+    return load_sft_examples(path, split=split, limit=limit)
+
+
+def load_sft_examples(path, split, limit):
     """Validate and load exactly ``limit`` SFT examples from the requested split."""
 
     errors = validate_jsonl("sft", path)
@@ -63,12 +71,21 @@ def run_sft(config, config_path):
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if resolved.get("dry_run") and resolved.get("synthetic_data_if_missing") and not data_path.exists():
-        _write_synthetic_sft_jsonl(data_path, count=resolved["selection"]["max_train_examples"])
+        _write_synthetic_sft_jsonl(
+            data_path,
+            train_count=resolved["selection"]["max_train_examples"],
+            validation_count=resolved["selection"]["max_validation_examples"],
+        )
 
     examples = load_sft_train_examples(
         data_path,
-        split=resolved["selection"]["split"],
+        split=resolved["selection"]["train_split"],
         limit=resolved["selection"]["max_train_examples"],
+    )
+    validation_examples = load_sft_examples(
+        data_path,
+        split=resolved["selection"]["validation_split"],
+        limit=resolved["selection"]["max_validation_examples"],
     )
 
     data_hash = _sha256_file(data_path)
@@ -78,19 +95,51 @@ def run_sft(config, config_path):
     _write_text(output_dir / "resolved_config.yaml", _dump_yaml(resolved))
 
     if resolved["dry_run"]:
-        final_loss = 0.0
-        _write_metrics(output_dir / "metrics.jsonl", [{"step": 0, "final_loss": final_loss, "dry_run": True}])
-        _write_generation_check(output_dir / "sample_generations.jsonl", resolved, dry_run=True)
+        train_loss = 0.0
+        validation_loss = 0.0
+        sample_rows = _write_generation_check(
+            output_dir / "sample_generations.jsonl",
+            resolved,
+            dry_run=True,
+            examples=examples,
+        )
     else:
-        final_loss, model, tokenizer = _run_trl_training(resolved, examples, output_dir)
-        _write_generation_check(
+        train_loss, validation_loss, model, tokenizer = _run_trl_training(
+            resolved,
+            train_examples=examples,
+            validation_examples=validation_examples,
+            output_dir=output_dir,
+        )
+        sample_rows = _write_generation_check(
             output_dir / "sample_generations.jsonl",
             resolved,
             dry_run=False,
             model=model,
             tokenizer=tokenizer,
+            examples=examples,
         )
 
+    eval_metrics = _run_eval_after_train(resolved, output_dir)
+    average_output_length = _average_generation_length(sample_rows, eval_metrics)
+    format_success = eval_metrics.get("format_success")
+    target_eval_score = eval_metrics.get("exact_match")
+    final_loss = train_loss
+    _write_metrics(
+        output_dir / "metrics.jsonl",
+        [
+            {
+                "step": int(resolved["training"]["max_steps"]),
+                "train_loss": train_loss,
+                "validation_loss": validation_loss,
+                "final_loss": final_loss,
+                "format_success": format_success,
+                "target_eval_score": target_eval_score,
+                "average_output_length": average_output_length,
+                "dry_run": resolved["dry_run"],
+                "smoke_run": resolved["smoke_run"],
+            }
+        ],
+    )
     _write_run_card(
         output_dir / "run_card.md",
         resolved=resolved,
@@ -98,10 +147,22 @@ def run_sft(config, config_path):
         config_hash=config_hash,
         git_commit=git_commit,
         final_loss=final_loss,
+        metrics={
+            "train_loss": train_loss,
+            "validation_loss": validation_loss,
+            "format_success": format_success,
+            "target_eval_score": target_eval_score,
+            "average_output_length": average_output_length,
+        },
     )
     return {
         "output_dir": str(output_dir),
         "final_loss": final_loss,
+        "train_loss": train_loss,
+        "validation_loss": validation_loss,
+        "format_success": format_success,
+        "target_eval_score": target_eval_score,
+        "average_output_length": average_output_length,
         "data_hash": data_hash,
         "config_hash": config_hash,
         "git_commit": git_commit,
@@ -109,7 +170,7 @@ def run_sft(config, config_path):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Run SFT overfit-32 with TRL SFTTrainer.")
+    parser = argparse.ArgumentParser(description="Run a small SFT experiment with TRL SFTTrainer.")
     parser.add_argument("--config", required=True)
     args = parser.parse_args(argv)
 
@@ -121,8 +182,14 @@ def main(argv=None):
 
 def _resolve_config(config):
     resolved = copy.deepcopy(config)
-    resolved["selection"].setdefault("split", "train")
+    resolved.setdefault("run_name", "sft-overfit32")
+    resolved.setdefault("smoke_run", False)
+    if "split" in resolved["selection"] and "train_split" not in resolved["selection"]:
+        resolved["selection"]["train_split"] = resolved["selection"]["split"]
+    resolved["selection"].setdefault("train_split", "train")
+    resolved["selection"].setdefault("validation_split", "val")
     resolved["selection"].setdefault("max_train_examples", 32)
+    resolved["selection"].setdefault("max_validation_examples", 0)
     resolved["training"].setdefault("max_steps", 2)
     resolved["training"].setdefault("per_device_train_batch_size", 1)
     resolved["training"].setdefault("gradient_accumulation_steps", 1)
@@ -135,13 +202,26 @@ def _resolve_config(config):
     resolved["peft"].setdefault("lora_dropout", 0.0)
     resolved["generation_check"].setdefault("max_new_tokens", 32)
     resolved["generation_check"].setdefault("prompts", [])
+    resolved["generation_check"].setdefault("random_sample_count", 0)
+    resolved.setdefault("eval_after_train", {})
+    resolved["eval_after_train"].setdefault("enabled", False)
+    resolved["eval_after_train"].setdefault("prompt_path", "/tmp/posttrain_lab_eval/baseline_prompts.jsonl")
+    resolved["eval_after_train"].setdefault("output_dir", str(Path(resolved["output_dir"]) / "eval"))
+    resolved["eval_after_train"].setdefault("baseline_metrics_path", "/tmp/posttrain_lab_eval/baseline_run/metrics.json")
+    resolved["eval_after_train"].setdefault("dry_run", True)
+    resolved["eval_after_train"].setdefault("model_name", "dummy")
+    resolved["eval_after_train"].setdefault("temperature", 0.0)
+    resolved["eval_after_train"].setdefault("top_p", 1.0)
+    resolved["eval_after_train"].setdefault("max_new_tokens", 32)
+    resolved["eval_after_train"].setdefault("format_regex", r"^\\boxed\{.+\}$")
+    resolved["eval_after_train"].setdefault("exact_match", True)
     resolved.setdefault("synthetic_data_if_missing", False)
-    if resolved["selection"]["max_train_examples"] != 32:
+    if resolved["run_name"] == "sft-overfit32" and resolved["selection"]["max_train_examples"] != 32:
         raise ValueError("overfit-32 requires selection.max_train_examples == 32")
     return resolved
 
 
-def _run_trl_training(config, examples, output_dir):
+def _run_trl_training(config, train_examples, validation_examples, output_dir):
     try:
         from datasets import Dataset
         from peft import LoraConfig, prepare_model_for_kbit_training
@@ -173,7 +253,12 @@ def _run_trl_training(config, examples, output_dir):
         bias="none",
         task_type="CAUSAL_LM",
     )
-    dataset = Dataset.from_list([{"text": _messages_to_text(example["messages"], tokenizer)} for example in examples])
+    train_dataset = Dataset.from_list(
+        [{"text": _messages_to_text(example["messages"], tokenizer)} for example in train_examples]
+    )
+    eval_dataset = Dataset.from_list(
+        [{"text": _messages_to_text(example["messages"], tokenizer)} for example in validation_examples]
+    )
     args = TrainingArguments(
         output_dir=str(output_dir),
         max_steps=int(config["training"]["max_steps"]),
@@ -181,6 +266,8 @@ def _run_trl_training(config, examples, output_dir):
         gradient_accumulation_steps=int(config["training"]["gradient_accumulation_steps"]),
         learning_rate=float(config["training"]["learning_rate"]),
         logging_steps=1,
+        evaluation_strategy="steps" if validation_examples else "no",
+        eval_steps=1 if validation_examples else None,
         save_steps=int(config["training"]["max_steps"]),
         report_to=[],
         seed=int(config["seed"]),
@@ -188,7 +275,8 @@ def _run_trl_training(config, examples, output_dir):
     trainer = SFTTrainer(
         model=model,
         tokenizer=tokenizer,
-        train_dataset=dataset,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset if validation_examples else None,
         dataset_text_field="text",
         max_seq_length=int(config["training"]["max_seq_length"]),
         args=args,
@@ -198,8 +286,9 @@ def _run_trl_training(config, examples, output_dir):
     trainer.save_model(str(output_dir))
 
     final_loss = float(result.training_loss)
-    _write_metrics(output_dir / "metrics.jsonl", trainer.state.log_history + [{"final_loss": final_loss}])
-    return final_loss, trainer.model, tokenizer
+    validation_loss = _last_metric(trainer.state.log_history, "eval_loss")
+    _write_metrics(output_dir / "trainer_log.jsonl", trainer.state.log_history)
+    return final_loss, validation_loss, trainer.model, tokenizer
 
 
 def _messages_to_text(messages, tokenizer):
@@ -208,11 +297,18 @@ def _messages_to_text(messages, tokenizer):
     return "\n".join(f"{message['role']}: {message['content']}" for message in messages)
 
 
-def _write_generation_check(path, config, dry_run, model=None, tokenizer=None):
+def _write_generation_check(path, config, dry_run, model=None, tokenizer=None, examples=None):
     rows = []
-    for index, prompt in enumerate(config["generation_check"].get("prompts", [])):
+    prompts = list(config["generation_check"].get("prompts", []))
+    sample_count = int(config["generation_check"].get("random_sample_count", 0))
+    if sample_count and examples:
+        rng = random.Random(int(config["seed"]))
+        selected = rng.sample(examples, k=min(sample_count, len(examples)))
+        prompts.extend(_example_prompt(example) for example in selected)
+
+    for index, prompt in enumerate(prompts):
         if dry_run:
-            generation = "<dry-run generation>"
+            generation = _dry_generation_for_prompt(prompt)
         else:
             generation = _generate_text(model, tokenizer, prompt, config["generation_check"]["max_new_tokens"])
         rows.append(
@@ -224,16 +320,17 @@ def _write_generation_check(path, config, dry_run, model=None, tokenizer=None):
             }
         )
     _write_jsonl(path, rows)
+    return rows
 
 
-def _write_synthetic_sft_jsonl(path, count):
+def _write_synthetic_sft_jsonl(path, train_count, validation_count):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = []
-    for index in range(count):
+    for index in range(train_count):
         rows.append(
             {
-                "id": f"sft-overfit32-{index:03d}",
+                "id": f"sft-train-{index:04d}",
                 "split": "train",
                 "messages": [
                     {"role": "user", "content": f"Compute {index} + 1."},
@@ -247,7 +344,98 @@ def _write_synthetic_sft_jsonl(path, count):
                 },
             }
         )
+    for index in range(validation_count):
+        rows.append(
+            {
+                "id": f"sft-smoke-val-{index:03d}",
+                "split": "val",
+                "messages": [
+                    {"role": "user", "content": f"Validate {index} + 1."},
+                    {"role": "assistant", "content": str(index + 1)},
+                ],
+                "metadata": {
+                    "source": "synthetic-dry-run",
+                    "domain": "math",
+                    "difficulty": "easy",
+                    "license": "synthetic",
+                },
+            }
+        )
     _write_jsonl(path, rows)
+
+
+def _run_eval_after_train(config, output_dir):
+    if not config["eval_after_train"]["enabled"]:
+        _write_eval_diff(output_dir / "eval_diff.md", candidate=None, baseline=None)
+        return {}
+
+    eval_config = _build_eval_config(config, output_dir)
+    prompt_path = Path(eval_config["prompt_path"])
+    if eval_config["dry_run"] and not prompt_path.exists():
+        _write_default_eval_prompts(prompt_path)
+
+    candidate_metrics = run_eval(eval_config)
+    baseline_metrics = _load_json_if_exists(config["eval_after_train"]["baseline_metrics_path"])
+    _write_eval_diff(output_dir / "eval_diff.md", candidate=candidate_metrics, baseline=baseline_metrics)
+    return candidate_metrics
+
+
+def _build_eval_config(config, output_dir):
+    eval_config = config["eval_after_train"]
+    return {
+        "prompt_path": eval_config["prompt_path"],
+        "output_dir": eval_config.get("output_dir") or str(output_dir / "eval"),
+        "dry_run": eval_config["dry_run"],
+        "model_name": eval_config["model_name"],
+        "inference": {
+            "temperature": eval_config["temperature"],
+            "top_p": eval_config["top_p"],
+            "max_new_tokens": eval_config["max_new_tokens"],
+            "stop_tokens": [],
+        },
+        "metrics": {
+            "exact_match": eval_config["exact_match"],
+            "format_regex": eval_config["format_regex"],
+        },
+    }
+
+
+def _write_default_eval_prompts(path):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "id": "baseline-001",
+            "prompt": "Return the answer to 2 + 2 in boxed format.",
+            "answer": r"\boxed{4}",
+            "mock_generation": r"\boxed{4}",
+        }
+    ]
+    _write_jsonl(path, rows)
+
+
+def _write_eval_diff(path, candidate, baseline):
+    lines = ["# Eval Diff", "", "This run is marked as smoke, not final.", ""]
+    if not candidate:
+        lines.extend(["No eval-after-train metrics were produced.", ""])
+    else:
+        lines.extend(["## Candidate", ""])
+        for key in sorted(candidate):
+            lines.append(f"- {key}: {candidate[key]}")
+        lines.append("")
+
+    if baseline:
+        lines.extend(["## Baseline Comparison", ""])
+        for key in sorted(candidate or {}):
+            baseline_value = baseline.get(key)
+            candidate_value = candidate.get(key)
+            if isinstance(candidate_value, (int, float)) and isinstance(baseline_value, (int, float)):
+                lines.append(f"- {key}: candidate={candidate_value}, baseline={baseline_value}, delta={candidate_value - baseline_value}")
+        lines.append("")
+    else:
+        lines.extend(["Baseline metrics not found; comparison skipped.", ""])
+
+    _write_text(path, "\n".join(lines))
 
 
 def _generate_text(model, tokenizer, prompt, max_new_tokens):
@@ -271,10 +459,14 @@ def _generate_text(model, tokenizer, prompt, max_new_tokens):
     return tokenizer.decode(generated, skip_special_tokens=True)
 
 
-def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_loss):
+def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_loss, metrics):
+    finality = "smoke, not final" if resolved["smoke_run"] else "pipeline check, not final"
     lines = [
-        "# SFT Overfit-32 Run Card",
+        "# SFT Run Card",
         "",
+        f"- run name: `{resolved['run_name']}`",
+        f"- smoke run: `{resolved['smoke_run']}`",
+        f"- finality: `{finality}`",
         f"- base model: `{resolved['model_name_or_path']}`",
         f"- data path: `{resolved['data_path']}`",
         f"- data hash: `{data_hash}`",
@@ -283,9 +475,17 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- output path: `{resolved['output_dir']}`",
         f"- adapter/checkpoint path: `{resolved['output_dir']}`",
         f"- final loss: `{final_loss}`",
+        f"- train loss: `{metrics['train_loss']}`",
+        f"- validation loss: `{metrics['validation_loss']}`",
+        f"- format success: `{metrics['format_success']}`",
+        f"- target eval score: `{metrics['target_eval_score']}`",
+        f"- average output length: `{metrics['average_output_length']}`",
         f"- dry run: `{resolved['dry_run']}`",
         f"- train examples: `{resolved['selection']['max_train_examples']}`",
+        f"- validation examples: `{resolved['selection']['max_validation_examples']}`",
         f"- max steps: `{resolved['training']['max_steps']}`",
+        f"- eval output path: `{resolved['eval_after_train']['output_dir']}`",
+        f"- eval diff path: `{resolved['output_dir']}/eval_diff.md`",
     ]
     _write_text(path, "\n".join(lines) + "\n")
 
@@ -302,6 +502,41 @@ def _write_jsonl(path, rows):
 
 def _write_text(path, text):
     Path(path).write_text(text, encoding="utf-8")
+
+
+def _load_json_if_exists(path):
+    path = Path(path)
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _last_metric(rows, key):
+    for row in reversed(rows):
+        if key in row:
+            return row[key]
+    return None
+
+
+def _average_generation_length(sample_rows, eval_metrics):
+    if eval_metrics.get("completion_length_mean") is not None:
+        return eval_metrics["completion_length_mean"]
+    if not sample_rows:
+        return None
+    return sum(len(row["generation"]) for row in sample_rows) / len(sample_rows)
+
+
+def _example_prompt(example):
+    for message in example["messages"]:
+        if message["role"] == "user":
+            return message["content"]
+    return example["messages"][0]["content"]
+
+
+def _dry_generation_for_prompt(prompt):
+    if "boxed" in prompt.lower():
+        return r"\boxed{4}"
+    return "<dry-run generation>"
 
 
 def _sha256_file(path):

@@ -1,0 +1,41 @@
+run_name: sft-smoke-1k
+model_name_or_path: hf-internal-testing/tiny-random-gpt2
+data_path: /tmp/posttrain_lab_sft/smoke_1k_sft.jsonl
+output_dir: runs/sft/smoke_1k
+dry_run: true
+synthetic_data_if_missing: true
+smoke_run: true
+seed: 13
+selection:
+  train_split: train
+  validation_split: val
+  max_train_examples: 1000
+  max_validation_examples: 64
+training:
+  max_steps: 4
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 1
+  learning_rate: 0.0002
+  max_seq_length: 128
+peft:
+  method: lora
+  qlora: false
+  r: 4
+  lora_alpha: 8
+  lora_dropout: 0.0
+generation_check:
+  max_new_tokens: 16
+  random_sample_count: 20
+  prompts: []
+eval_after_train:
+  enabled: true
+  prompt_path: /tmp/posttrain_lab_eval/baseline_prompts.jsonl
+  output_dir: runs/sft/smoke_1k/eval
+  baseline_metrics_path: /tmp/posttrain_lab_eval/baseline_run/metrics.json
+  dry_run: true
+  model_name: dummy
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 32
+  exact_match: true
+  format_regex: ^\\boxed\{.+\}$

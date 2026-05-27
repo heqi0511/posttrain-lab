@@ -1,4 +1,4 @@
-.PHONY: format lint test validate-data eval-baseline sft-overfit32 rlvr-smoke
+.PHONY: format lint test validate-data eval-baseline sft-smoke sft-overfit32 rlvr-smoke
 
 format:
 	@echo "format placeholder: no formatter configured yet"
@@ -17,6 +17,9 @@ eval-baseline:
 	@mkdir -p /tmp/posttrain_lab_eval
 	@printf '%s\n' '{"id":"baseline-001","prompt":"Return the answer to 2 + 2 in boxed format.","answer":"\\boxed{4}","mock_generation":"\\boxed{4}"}' > /tmp/posttrain_lab_eval/baseline_prompts.jsonl
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.eval.eval_runner --config configs/eval/baseline.yaml
+
+sft-smoke: eval-baseline
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_sft --config configs/sft/smoke_1k.yaml
 
 sft-overfit32:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_sft --config configs/sft/overfit32.yaml
