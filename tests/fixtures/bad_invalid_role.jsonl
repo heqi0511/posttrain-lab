@@ -1,0 +1,1 @@
+{"id":"bad-role","split":"train","messages":[{"role":"developer","content":"Compute carefully."},{"role":"assistant","content":"2"}],"metadata":{"source":"unit-test","domain":"math","difficulty":"easy","license":"synthetic"}}

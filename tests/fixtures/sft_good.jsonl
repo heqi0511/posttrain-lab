@@ -1,0 +1,2 @@
+{"id":"sft-001","split":"train","messages":[{"role":"system","content":"You are a careful math tutor."},{"role":"user","content":"Compute 2 + 2."},{"role":"assistant","content":"The answer is 4."}],"metadata":{"source":"unit-test","domain":"math","difficulty":"easy","license":"synthetic"}}
+{"id":"sft-002","split":"val","messages":[{"role":"user","content":"Compute 3 * 3."},{"role":"assistant","content":"The answer is 9."}],"metadata":{"source":"unit-test","domain":"math","difficulty":"easy","license":"synthetic"}}

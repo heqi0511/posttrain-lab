@@ -1,0 +1,2 @@
+{"id":"duplicate-id","split":"train","messages":[{"role":"user","content":"Compute 1 + 1."},{"role":"assistant","content":"2"}],"metadata":{"source":"unit-test","domain":"math","difficulty":"easy","license":"synthetic"}}
+{"id":"duplicate-id","split":"val","messages":[{"role":"user","content":"Compute 2 + 2."},{"role":"assistant","content":"4"}],"metadata":{"source":"unit-test","domain":"math","difficulty":"easy","license":"synthetic"}}

@@ -1,0 +1,1 @@
+{"id":"empty-content","split":"train","messages":[{"role":"user","content":""},{"role":"assistant","content":"2"}],"metadata":{"source":"unit-test","domain":"math","difficulty":"easy","license":"synthetic"}}

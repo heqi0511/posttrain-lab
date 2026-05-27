@@ -1,0 +1,2 @@
+{"id":"rlvr-001","split":"train","prompt":[{"role":"user","content":"Compute 5 + 7."}],"verifier":{"type":"math_boxed_v001","answer":"12"},"metadata":{"source":"unit-test","domain":"math","difficulty":"easy","license":"synthetic"}}
+{"id":"rlvr-002","split":"test","prompt":[{"role":"user","content":"Compute 6 * 8."}],"verifier":{"type":"math_boxed_v001","answer":"48"},"metadata":{"source":"unit-test","domain":"math","difficulty":"easy","license":"synthetic"}}

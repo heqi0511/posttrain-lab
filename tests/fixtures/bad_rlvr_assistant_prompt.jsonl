@@ -1,0 +1,1 @@
+{"id":"rlvr-assistant","split":"train","prompt":[{"role":"user","content":"Compute 1 + 1."},{"role":"assistant","content":"2"}],"verifier":{"type":"math_boxed_v001","answer":"2"},"metadata":{"source":"unit-test","domain":"math","difficulty":"easy","license":"synthetic"}}

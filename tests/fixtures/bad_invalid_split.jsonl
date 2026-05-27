@@ -1,0 +1,1 @@
+{"id":"bad-split","split":"dev","messages":[{"role":"user","content":"Compute 1 + 1."},{"role":"assistant","content":"2"}],"metadata":{"source":"unit-test","domain":"math","difficulty":"easy","license":"synthetic"}}

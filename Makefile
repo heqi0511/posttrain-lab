@@ -7,10 +7,11 @@ lint:
 	@echo "lint placeholder: no linter configured yet"
 
 test:
-	PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m pytest -q
 
 validate-data:
-	@echo "validate-data placeholder: validators are not implemented yet"
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type sft --path tests/fixtures/sft_good.jsonl
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type rlvr --path tests/fixtures/rlvr_good.jsonl
 
 eval-baseline:
 	@echo "eval-baseline placeholder: eval runner is not implemented yet"
