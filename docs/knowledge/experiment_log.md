@@ -18,8 +18,8 @@ Record training and eval runs here with links to run directories, run cards, res
 - Config: `configs/sft/smoke_1k.yaml`
 - Command: `make sft-smoke`
 - Default mode: real TRL/PEFT LoRA run with `Qwen/Qwen3-0.6B`.
-- Data source: synthetic schema-valid SFT examples generated under `runs/sft/smoke_1k/data/` when missing.
-- Output path: `runs/sft/smoke_1k/`
+- Data source: synthetic schema-valid boxed-format addition examples generated under `runs/sft/smoke_1k_boxed/data/` when missing.
+- Output path: `runs/sft/smoke_1k_boxed/`
 - This is a smoke run, not a final training result.
 - Required artifacts: `resolved_config.yaml`, `run_card.md`, `metrics.jsonl`, `sample_generations.jsonl`, `eval_diff.md`
 - The target first runs the fixed dry-run eval baseline, then runs eval-after-train on the saved adapter without modifying baseline eval config files.
@@ -35,7 +35,7 @@ Record training and eval runs here with links to run directories, run cards, res
 - Final validation loss: `1.5160`.
 - Eval-after-train: exact match `0.0`, format success `0.0`, parse failure rate `1.0`, average output length `20.0`.
 - Manual generation check saved `20` sampled generations. For arithmetic training prompts, generations generally returned the correct numeric answer after an empty `<think>...</think>` block.
-- Caveat: the fixed baseline eval prompt requests boxed format, but the smoke SFT data teaches plain numeric answers, so the failed format/eval score is expected and is not evidence of regression by itself.
+- Caveat: this run is superseded by the boxed-format smoke config because the fixed baseline eval prompt requests boxed format, but this earlier smoke data taught plain numeric answers.
 
 ## Qwen3-0.6B Overfit-32
 

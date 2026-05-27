@@ -138,3 +138,21 @@ def test_dry_run_can_create_temporary_synthetic_data_when_enabled(tmp_path):
     assert data_path.exists()
     assert result["final_loss"] == 0.0
     assert len(data_path.read_text(encoding="utf-8").splitlines()) == 32
+
+
+def test_synthetic_data_can_use_boxed_addition_format(tmp_path):
+    data_path = tmp_path / "missing" / "boxed_sft.jsonl"
+    output_dir = tmp_path / "runs" / "sft" / "boxed"
+    config_path = tmp_path / "boxed.yaml"
+    write_config(config_path, data_path, output_dir)
+    text = config_path.read_text(encoding="utf-8")
+    text = text.replace("synthetic_data_if_missing: false", "synthetic_data_if_missing: true")
+    text += "synthetic_answer_format: boxed\n"
+    text += "synthetic_problem_style: addition\n"
+    config_path.write_text(text, encoding="utf-8")
+
+    run_sft(load_config(config_path), config_path=config_path)
+
+    first_record = json.loads(data_path.read_text(encoding="utf-8").splitlines()[0])
+    assert "boxed format" in first_record["messages"][0]["content"]
+    assert first_record["messages"][1]["content"].startswith(r"\boxed{")

@@ -1,9 +1,11 @@
 run_name: sft-smoke-1k
 model_name_or_path: Qwen/Qwen3-0.6B
-data_path: runs/sft/smoke_1k/data/sft_smoke_1k.jsonl
-output_dir: runs/sft/smoke_1k
+data_path: runs/sft/smoke_1k_boxed/data/sft_smoke_1k_boxed.jsonl
+output_dir: runs/sft/smoke_1k_boxed
 dry_run: false
 synthetic_data_if_missing: true
+synthetic_answer_format: boxed
+synthetic_problem_style: addition
 smoke_run: true
 seed: 13
 torch_dtype: bfloat16
@@ -37,19 +39,21 @@ peft:
   target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
 generation_check:
   max_new_tokens: 16
+  enable_thinking: false
   random_sample_count: 20
   prompts: []
 eval_after_train:
   enabled: true
   prompt_path: /tmp/posttrain_lab_eval/baseline_prompts.jsonl
-  output_dir: runs/sft/smoke_1k/eval
+  output_dir: runs/sft/smoke_1k_boxed/eval
   baseline_metrics_path: /tmp/posttrain_lab_eval/baseline_run/metrics.json
   dry_run: false
   model_name: Qwen/Qwen3-0.6B
-  adapter_path: runs/sft/smoke_1k
+  adapter_path: runs/sft/smoke_1k_boxed
   torch_dtype: bfloat16
   trust_remote_code: false
   apply_chat_template: true
+  enable_thinking: false
   temperature: 0.0
   top_p: 1.0
   max_new_tokens: 32

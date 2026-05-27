@@ -120,6 +120,7 @@ class _HFCausalLMGenerator:
         model_name = config["model_name"]
         self.torch = torch
         self.apply_chat_template = bool(config.get("apply_chat_template", False))
+        self.enable_thinking = config.get("enable_thinking")
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_name,
             trust_remote_code=bool(config.get("trust_remote_code", False)),
@@ -151,6 +152,7 @@ class _HFCausalLMGenerator:
             example.get("prompt", ""),
             tokenizer=self.tokenizer,
             apply_chat_template=self.apply_chat_template,
+            enable_thinking=self.enable_thinking,
         )
         inputs = self.tokenizer(prompt, return_tensors="pt")
         if hasattr(self.model, "device"):
@@ -191,11 +193,14 @@ def _load_jsonl(path):
     return records
 
 
-def _prompt_to_text(prompt, tokenizer=None, apply_chat_template=False):
+def _prompt_to_text(prompt, tokenizer=None, apply_chat_template=False, enable_thinking=None):
     if apply_chat_template and tokenizer is not None:
         messages = prompt if isinstance(prompt, list) else [{"role": "user", "content": str(prompt)}]
+        kwargs = {}
+        if enable_thinking is not None:
+            kwargs["enable_thinking"] = bool(enable_thinking)
         try:
-            return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True, **kwargs)
         except (TypeError, ValueError):
             pass
     if isinstance(prompt, str):

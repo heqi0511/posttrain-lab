@@ -75,6 +75,8 @@ def run_sft(config, config_path):
             data_path,
             train_count=resolved["selection"]["max_train_examples"],
             validation_count=resolved["selection"]["max_validation_examples"],
+            answer_format=resolved["synthetic_answer_format"],
+            problem_style=resolved["synthetic_problem_style"],
         )
 
     examples = load_sft_train_examples(
@@ -213,6 +215,7 @@ def _resolve_config(config):
     resolved.setdefault("trust_remote_code", False)
     resolved.setdefault("attn_implementation", None)
     resolved["generation_check"].setdefault("max_new_tokens", 32)
+    resolved["generation_check"].setdefault("enable_thinking", None)
     resolved["generation_check"].setdefault("prompts", [])
     resolved["generation_check"].setdefault("random_sample_count", 0)
     resolved.setdefault("eval_after_train", {})
@@ -226,12 +229,15 @@ def _resolve_config(config):
     resolved["eval_after_train"].setdefault("torch_dtype", resolved["torch_dtype"])
     resolved["eval_after_train"].setdefault("trust_remote_code", resolved["trust_remote_code"])
     resolved["eval_after_train"].setdefault("apply_chat_template", True)
+    resolved["eval_after_train"].setdefault("enable_thinking", None)
     resolved["eval_after_train"].setdefault("temperature", 0.0)
     resolved["eval_after_train"].setdefault("top_p", 1.0)
     resolved["eval_after_train"].setdefault("max_new_tokens", 32)
     resolved["eval_after_train"].setdefault("format_regex", r"^\\boxed\{.+\}$")
     resolved["eval_after_train"].setdefault("exact_match", True)
     resolved.setdefault("synthetic_data_if_missing", False)
+    resolved.setdefault("synthetic_answer_format", "plain")
+    resolved.setdefault("synthetic_problem_style", "increment")
     if resolved["run_name"] == "sft-overfit32" and resolved["selection"]["max_train_examples"] != 32:
         raise ValueError("overfit-32 requires selection.max_train_examples == 32")
     return resolved
@@ -351,7 +357,13 @@ def _write_generation_check(path, config, dry_run, model=None, tokenizer=None, e
         if dry_run:
             generation = _dry_generation_for_prompt(prompt)
         else:
-            generation = _generate_text(model, tokenizer, prompt, config["generation_check"]["max_new_tokens"])
+            generation = _generate_text(
+                model,
+                tokenizer,
+                prompt,
+                config["generation_check"]["max_new_tokens"],
+                enable_thinking=config["generation_check"]["enable_thinking"],
+            )
         rows.append(
             {
                 "id": f"generation-check-{index}",
@@ -364,18 +376,19 @@ def _write_generation_check(path, config, dry_run, model=None, tokenizer=None, e
     return rows
 
 
-def _write_synthetic_sft_jsonl(path, train_count, validation_count):
+def _write_synthetic_sft_jsonl(path, train_count, validation_count, answer_format="plain", problem_style="increment"):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = []
     for index in range(train_count):
+        prompt, answer = _synthetic_math_example(index, answer_format, problem_style)
         rows.append(
             {
                 "id": f"sft-train-{index:04d}",
                 "split": "train",
                 "messages": [
-                    {"role": "user", "content": f"Compute {index} + 1."},
-                    {"role": "assistant", "content": str(index + 1)},
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": answer},
                 ],
                 "metadata": {
                     "source": "synthetic-dry-run",
@@ -386,13 +399,14 @@ def _write_synthetic_sft_jsonl(path, train_count, validation_count):
             }
         )
     for index in range(validation_count):
+        prompt, answer = _synthetic_math_example(train_count + index, answer_format, problem_style)
         rows.append(
             {
                 "id": f"sft-smoke-val-{index:03d}",
                 "split": "val",
                 "messages": [
-                    {"role": "user", "content": f"Validate {index} + 1."},
-                    {"role": "assistant", "content": str(index + 1)},
+                    {"role": "user", "content": prompt},
+                    {"role": "assistant", "content": answer},
                 ],
                 "metadata": {
                     "source": "synthetic-dry-run",
@@ -403,6 +417,26 @@ def _write_synthetic_sft_jsonl(path, train_count, validation_count):
             }
         )
     _write_jsonl(path, rows)
+
+
+def _synthetic_math_example(index, answer_format, problem_style):
+    if problem_style == "increment":
+        left = index
+        right = 1
+        prompt = f"Compute {left} + {right}."
+    elif problem_style == "addition":
+        left = 3 + (index % 97)
+        right = 5 + ((index * 7) % 89)
+        prompt = f"Compute {left} + {right}. Return only the final answer in boxed format."
+    else:
+        raise ValueError(f"unsupported synthetic_problem_style: {problem_style}")
+
+    answer = str(left + right)
+    if answer_format == "plain":
+        return prompt, answer
+    if answer_format == "boxed":
+        return prompt, rf"\boxed{{{answer}}}"
+    raise ValueError(f"unsupported synthetic_answer_format: {answer_format}")
 
 
 def _run_eval_after_train(config, output_dir):
@@ -432,6 +466,7 @@ def _build_eval_config(config, output_dir):
         "torch_dtype": eval_config["torch_dtype"],
         "trust_remote_code": eval_config["trust_remote_code"],
         "apply_chat_template": eval_config["apply_chat_template"],
+        "enable_thinking": eval_config["enable_thinking"],
         "inference": {
             "temperature": eval_config["temperature"],
             "top_p": eval_config["top_p"],
@@ -483,13 +518,13 @@ def _write_eval_diff(path, candidate, baseline):
     _write_text(path, "\n".join(lines))
 
 
-def _generate_text(model, tokenizer, prompt, max_new_tokens):
+def _generate_text(model, tokenizer, prompt, max_new_tokens, enable_thinking=None):
     try:
         import torch
     except ImportError:
         torch = None
 
-    prompt_text = _generation_prompt_to_text(prompt, tokenizer)
+    prompt_text = _generation_prompt_to_text(prompt, tokenizer, enable_thinking=enable_thinking)
     inputs = tokenizer(prompt_text, return_tensors="pt")
     if hasattr(model, "device"):
         inputs = {key: value.to(model.device) for key, value in inputs.items()}
@@ -558,13 +593,17 @@ def _bnb_compute_dtype(name):
     return torch.bfloat16
 
 
-def _generation_prompt_to_text(prompt, tokenizer):
+def _generation_prompt_to_text(prompt, tokenizer, enable_thinking=None):
     if hasattr(tokenizer, "apply_chat_template"):
+        kwargs = {}
+        if enable_thinking is not None:
+            kwargs["enable_thinking"] = bool(enable_thinking)
         try:
             return tokenizer.apply_chat_template(
                 [{"role": "user", "content": prompt}],
                 tokenize=False,
                 add_generation_prompt=True,
+                **kwargs,
             )
         except TypeError:
             return tokenizer.apply_chat_template([{"role": "user", "content": prompt}], tokenize=False)
