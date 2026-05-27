@@ -17,5 +17,7 @@ limits:
   sft_val_examples: 2
   rlvr_train_examples: 8
   sft_max_steps: 2
+  real_sft_max_steps: 200
+  real_sft_learning_rate: 0.0005
   rlvr_max_steps: 1
   eval_max_new_tokens: 32

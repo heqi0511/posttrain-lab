@@ -138,6 +138,9 @@ def main(argv=None):
 
 
 def _sft_config(config, model_name, data_path, output_dir, dry_run):
+    max_steps = int(config["limits"]["sft_max_steps"] if dry_run else config["limits"]["real_sft_max_steps"])
+    learning_rate = float(0.0001 if dry_run else config["limits"]["real_sft_learning_rate"])
+    target_modules = [] if dry_run else ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
     return {
         "run_name": "e2e-sft-overfit32",
         "model_name_or_path": model_name,
@@ -156,26 +159,26 @@ def _sft_config(config, model_name, data_path, output_dir, dry_run):
             "max_validation_examples": int(config["limits"]["sft_val_examples"]),
         },
         "training": {
-            "max_steps": int(config["limits"]["sft_max_steps"]),
+            "max_steps": max_steps,
             "per_device_train_batch_size": 1,
             "gradient_accumulation_steps": 1,
-            "learning_rate": 0.0001,
+            "learning_rate": learning_rate,
             "max_seq_length": 128,
             "bf16": False,
             "fp16": False,
             "gradient_checkpointing": False,
             "logging_steps": 1,
             "eval_steps": 1,
-            "save_steps": int(config["limits"]["sft_max_steps"]),
+            "save_steps": max_steps,
             "save_total_limit": 1,
         },
         "peft": {
             "method": "lora",
             "qlora": False,
-            "r": 4,
-            "lora_alpha": 8,
+            "r": 4 if dry_run else 16,
+            "lora_alpha": 8 if dry_run else 32,
             "lora_dropout": 0.0,
-            "target_modules": [],
+            "target_modules": target_modules,
         },
         "generation_check": {
             "max_new_tokens": int(config["limits"]["eval_max_new_tokens"]),
