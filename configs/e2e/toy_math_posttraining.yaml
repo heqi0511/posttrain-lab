@@ -13,11 +13,11 @@ limits:
   max_output_length: 128
   max_baseline_parse_failure_rate: 1.0
   max_parse_failure_rate: 0.0
-  sft_train_examples: 32
-  sft_val_examples: 2
-  rlvr_train_examples: 8
+  sft_train_examples: 80
+  sft_val_examples: 10
+  rlvr_train_examples: 24
   sft_max_steps: 2
-  real_sft_max_steps: 200
+  real_sft_max_steps: 300
   real_sft_learning_rate: 0.0005
   rlvr_max_steps: 1
   eval_max_new_tokens: 32

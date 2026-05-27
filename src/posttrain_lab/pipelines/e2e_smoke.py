@@ -34,12 +34,22 @@ def run_e2e_smoke(config_path, output_dir=None, real_run=False):
     _validate_or_fail(rlvr_seed_path, "rlvr")
 
     staged_dir = run_dir / "staged_data"
-    sft_data_path = staged_dir / "sft_overfit32.jsonl"
+    sft_data_path = staged_dir / "sft_smoke.jsonl"
     rlvr_data_path = staged_dir / "rlvr_toy.jsonl"
-    _write_sft_overfit_data(sft_data_path, int(limits["sft_train_examples"]), int(limits["sft_val_examples"]))
-    _write_rlvr_toy_data(rlvr_data_path, int(limits["rlvr_train_examples"]))
+    _stage_sft_data(
+        source_path=sft_seed_path,
+        output_path=sft_data_path,
+        train_count=int(limits["sft_train_examples"]),
+        val_count=int(limits["sft_val_examples"]),
+    )
+    _stage_rlvr_data(
+        source_path=rlvr_seed_path,
+        output_path=rlvr_data_path,
+        train_count=int(limits["rlvr_train_examples"]),
+    )
     _validate_or_fail(sft_data_path, "sft")
     _validate_or_fail(rlvr_data_path, "rlvr")
+    _assert_no_eval_leakage(sft_data_path, rlvr_data_path, eval_prompt_path)
 
     baseline_metrics = _run_eval_stage(
         run_dir=run_dir,
@@ -142,7 +152,7 @@ def _sft_config(config, model_name, data_path, output_dir, dry_run):
     learning_rate = float(0.0001 if dry_run else config["limits"]["real_sft_learning_rate"])
     target_modules = [] if dry_run else ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
     return {
-        "run_name": "e2e-sft-overfit32",
+        "run_name": "e2e-sft-diverse-smoke",
         "model_name_or_path": model_name,
         "data_path": str(data_path),
         "output_dir": str(output_dir),
@@ -297,65 +307,70 @@ def _run_reward_checks():
     }
 
 
-def _write_sft_overfit_data(path, train_count, val_count):
-    rows = []
-    for index in range(train_count):
-        left = 2 + index
-        right = 3 + (index % 7)
-        rows.append(
-            {
-                "id": f"e2e-sft-train-{index:04d}",
-                "split": "train",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": f"Compute {left} + {right}. Return only the final answer in boxed format.",
-                    },
-                    {"role": "assistant", "content": rf"\boxed{{{left + right}}}"},
-                ],
-                "metadata": _synthetic_metadata(),
-            }
-        )
-    for index in range(val_count):
-        left = 40 + index
-        right = 2
-        rows.append(
-            {
-                "id": f"e2e-sft-val-{index:04d}",
-                "split": "val",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": f"Compute {left} + {right}. Return only the final answer in boxed format.",
-                    },
-                    {"role": "assistant", "content": rf"\boxed{{{left + right}}}"},
-                ],
-                "metadata": _synthetic_metadata(),
-            }
-        )
-    _write_jsonl(path, rows)
+def _stage_sft_data(source_path, output_path, train_count, val_count):
+    rows = _read_jsonl(source_path)
+    staged = _select_split(rows, "train", train_count, source_path) + _select_split(
+        rows, "val", val_count, source_path
+    )
+    _write_jsonl(output_path, staged)
 
 
-def _write_rlvr_toy_data(path, train_count):
-    rows = []
-    for index in range(train_count):
-        left = 2 + index
-        right = 3 + ((index * 2) % 9)
-        rows.append(
-            {
-                "id": f"e2e-rlvr-train-{index:04d}",
-                "split": "train",
-                "prompt": [
-                    {
-                        "role": "user",
-                        "content": f"Compute {left} + {right}. Return only the final answer in boxed format.",
-                    }
-                ],
-                "verifier": {"type": "math_boxed_v001", "answer": str(left + right)},
-                "metadata": _synthetic_metadata(),
-            }
-        )
-    _write_jsonl(path, rows)
+def _stage_rlvr_data(source_path, output_path, train_count):
+    rows = _read_jsonl(source_path)
+    staged = _select_split(rows, "train", train_count, source_path)
+    _write_jsonl(output_path, staged)
+
+
+def _select_split(rows, split, count, source_path):
+    selected = [row for row in rows if row.get("split") == split]
+    if len(selected) < count:
+        raise RuntimeError(f"{source_path} has {len(selected)} {split} rows, expected at least {count}")
+    return selected[:count]
+
+
+def _assert_no_eval_leakage(sft_data_path, rlvr_data_path, eval_prompt_path):
+    sft_rows = _read_jsonl(sft_data_path)
+    rlvr_rows = _read_jsonl(rlvr_data_path)
+    eval_rows = _read_jsonl(eval_prompt_path)
+
+    sft_train = _normalized_prompts(row for row in sft_rows if row.get("split") == "train")
+    sft_val = _normalized_prompts(row for row in sft_rows if row.get("split") == "val")
+    rlvr_train = _normalized_prompts(row for row in rlvr_rows if row.get("split") == "train")
+    eval_prompts = _normalized_prompts(eval_rows)
+
+    _fail_on_prompt_overlap("SFT train", sft_train, "SFT val", sft_val)
+    _fail_on_prompt_overlap("SFT train", sft_train, "eval", eval_prompts)
+    _fail_on_prompt_overlap("SFT val", sft_val, "eval", eval_prompts)
+    _fail_on_prompt_overlap("RLVR train", rlvr_train, "eval", eval_prompts)
+
+
+def _normalized_prompts(rows):
+    return {_normalize_prompt(_prompt_text(row)) for row in rows}
+
+
+def _prompt_text(row):
+    if "messages" in row:
+        for message in row["messages"]:
+            if message.get("role") == "user":
+                return message.get("content", "")
+        return ""
+    if "prompt" in row:
+        prompt = row["prompt"]
+        if isinstance(prompt, list):
+            return "\n".join(str(message.get("content", "")) for message in prompt)
+        return str(prompt)
+    return str(row.get("prompt", ""))
+
+
+def _normalize_prompt(prompt):
+    return " ".join(str(prompt).lower().split())
+
+
+def _fail_on_prompt_overlap(left_name, left, right_name, right):
+    overlap = sorted(left & right)
+    if overlap:
+        sample = overlap[0]
+        raise RuntimeError(f"prompt leakage between {left_name} and {right_name}: {sample}")
 
 
 def _validate_or_fail(path, dataset_type):
@@ -462,15 +477,6 @@ def _run_mode(config, real_run):
     if "tiny" in str(config["real_model_name_or_path"]).lower():
         return "tiny-model run"
     return "real-model run"
-
-
-def _synthetic_metadata():
-    return {
-        "source": "synthetic-e2e",
-        "domain": "math",
-        "difficulty": "easy",
-        "license": "synthetic",
-    }
 
 
 def _write_jsonl(path, rows):

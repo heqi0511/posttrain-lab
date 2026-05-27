@@ -42,5 +42,19 @@ def test_e2e_smoke_safe_mode_writes_required_artifacts(tmp_path):
     assert baseline["metrics"]["exact_match"] == 1.0
     assert baseline["metrics"]["parse_failure_rate"] == 0.0
 
+    staged_sft = [
+        json.loads(line)
+        for line in (output_dir / "staged_data" / "sft_smoke.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert sum(row["split"] == "train" for row in staged_sft) == 80
+    assert sum(row["split"] == "val" for row in staged_sft) == 10
+    assert {row["metadata"]["difficulty"] for row in staged_sft} == {"easy", "medium", "hard"}
+    assert {row["metadata"]["domain"] for row in staged_sft} >= {
+        "arithmetic",
+        "fractions",
+        "linear_equations",
+        "algebra_simplification",
+    }
+
     assert (output_dir / "sample_generations.jsonl").read_text(encoding="utf-8").strip()
     assert (output_dir / "sample_rollouts.jsonl").read_text(encoding="utf-8").strip()

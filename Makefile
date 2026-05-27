@@ -18,6 +18,8 @@ test-eval:
 validate-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type sft --path tests/fixtures/sft_good.jsonl
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type rlvr --path tests/fixtures/rlvr_good.jsonl
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type sft --path data/fixtures/e2e/sft_seed.jsonl
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type rlvr --path data/fixtures/e2e/rlvr_seed.jsonl
 
 check-leakage:
 	@echo "check-leakage placeholder: no leakage checker configured yet"
