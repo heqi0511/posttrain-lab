@@ -19,7 +19,7 @@ eval-baseline:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.eval.eval_runner --config configs/eval/baseline.yaml
 
 sft-overfit32:
-	@echo "sft-overfit32 placeholder: SFT training is not implemented yet"
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_sft --config configs/sft/overfit32.yaml
 
 rlvr-smoke:
 	@echo "rlvr-smoke placeholder: RLVR training is not implemented yet"
