@@ -176,3 +176,22 @@ Record training and eval runs here with links to run directories, run cards, res
 - SFT got integer arithmetic and algebra simplification examples correct, but missed heldout fraction addition and harder linear equations.
 - Interpretation: the enriched fixture is no longer trivially saturated by this small SFT run. It verifies format learning, but target accuracy is not yet maxed out.
 - Caveat: this is still a small synthetic smoke dataset, not a reliable benchmark. The Slurm script and run directory were untracked server artifacts; code ran from the recorded commit.
+
+### 2026-05-27 Nexus Qwen3-0.6B Expanded RLVR Real E2E Smoke
+
+- Final Slurm job: `6916959` on `cbcb-heng`, RTX A5000, completed successfully in `00:03:34`.
+- Git commit: `5c2676ec942bc269856d2026bee7a495769971ad`.
+- Output path: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/5c2676e-e2e-sft-rlvr-expanded-cuda-gate/runs/e2e/rlvr_expanded_sft_to_rlvr_real_cuda_gate/`.
+- Dataset version: `synthetic-e2e-diverse-v2`.
+- Staged RLVR data: `80` train prompts; rollout-format gate evaluated `32` prompts before GRPO.
+- SFT training: `80` train examples, `10` validation examples, `300` max steps, final train loss `0.3286`, validation loss `0.3162`.
+- Base eval: exact match `0.0`, format success `0.0`, parse failure rate `1.0`, average output length `73.3`.
+- SFT eval: exact match `0.6`, format success `1.0`, parse failure rate `0.0`, average output length `10.5`.
+- Rollout-format gate: passed with reward mean `0.21875`, reward std `0.4134`, zero reward rate `0.78125`, perfect reward rate `0.21875`, parse failure rate `0.0`, average completion length `10.8125`.
+- RLVR training: `50` GRPO steps, `4` generations, max completion length `32`, reward mean `0.2125`, reward std `0.4091`, zero reward rate `0.7875`, perfect reward rate `0.2125`, parse failure rate `0.0`, average completion length `10.65`.
+- SFT+RLVR eval: exact match `0.6`, format success `1.0`, parse failure rate `0.0`, average output length `10.5`.
+- Heldout conclusion: SFT+RLVR did not improve target accuracy versus SFT on this eval.
+- Main diagnosis: prompt-level rollouts often had identical rewards inside each GRPO group, with trainer logs showing `frac_reward_zero_std=1.0`, `grad_norm=0.0`, and loss `0.0` on many steps. The run had aggregate reward variance, but little or no within-prompt advantage signal.
+- Representative failures unchanged after RLVR: fraction addition and harder linear equations, for example `3/4 + 1/6` predicted `\boxed{5/12}` instead of `\boxed{11/12}` and `5x - 4 = 2x + 17` predicted `\boxed{6}` instead of `\boxed{7}`.
+- Cancelled setup attempt: job `6916896` was stopped after SFT because the pre-RL rollout gate path was running inefficiently on CPU. Commit `5c2676e` fixed gate rollout device placement and reran from a clean worktree.
+- Caveat: this is still a smoke-scale synthetic run. Next RLVR iteration should increase within-prompt sampling diversity or use a policy/init where the four sampled completions for the same prompt receive mixed rewards.
