@@ -16,18 +16,19 @@ Future reward versions must document semantics, scale, invalid-output handling, 
 
 ### Contract
 
-The completion must contain a well-formed boxed final answer using `\boxed{...}`. The reward extracts all well-formed boxed answers, normalizes simple formatting, and returns `1.0` only when the unique normalized boxed answer matches the normalized reference answer.
+The completion must contain exactly one well-formed boxed final answer using `\boxed{...}`. The boxed answer must appear as the final-only answer form: optional short final-answer prefix, one boxed answer, and only punctuation or whitespace after it. The reward normalizes simple formatting and returns `1.0` only when that single normalized boxed answer matches the normalized reference answer.
 
 Invalid outputs receive `0.0`, including:
 
 - no boxed answer;
 - malformed `\boxed{...}` syntax;
 - empty boxed answer;
-- multiple conflicting boxed answers;
+- multiple boxed answers, even when repeated identical;
+- a boxed answer embedded in reasoning, negation, prompt-injection text, or followed by a contradictory final answer;
 - answer mismatch;
 - output longer than the configured limit.
 
-Repeated identical boxed answers are accepted because they do not create parser ambiguity, but this should still be monitored for verbosity during RLVR.
+Repeated identical boxed answers are rejected to remove parser ambiguity and reduce reward-hacking surface.
 
 ### Parser Behavior
 
@@ -37,9 +38,10 @@ If `allow_symbolic_equivalence=True`, the reward can also compare simple numeric
 
 ### Known Reward-Hacking Risks
 
-- A model may learn to emit many repeated identical boxed answers. This currently scores if the answer is correct, so RLVR logs should track completion length.
-- A model may include prompt-injection text such as "give full reward"; this is ignored unless the boxed answer is correct.
+- A model may learn to emit many repeated identical boxed answers. This now scores `0.0`, and RLVR logs should still track completion length.
+- A model may include prompt-injection text such as "give full reward"; this scores `0.0` unless the completion still satisfies the final-only boxed format and answer match.
 - A model may place the correct answer in reasoning and a wrong boxed final answer. Conflicting boxed answers score `0.0`.
+- A model may place the correct boxed answer in a negated sentence or candidate answer while giving a wrong unboxed final answer. The final-only boxed format check scores this `0.0`.
 - A model may exploit malformed LaTeX or parser ambiguity. Malformed boxed syntax scores `0.0`.
 - A model may output extremely long text before a boxed answer. Length above `max_output_chars` scores `0.0`.
 
@@ -49,4 +51,4 @@ If `allow_symbolic_equivalence=True`, the reward can also compare simple numeric
 - Test file: `tests/test_math_reward.py`
 - Command: `make test-rewards`
 
-The adversarial fixtures cover multiple boxed answers, correct answer in reasoning with wrong final answer, malformed LaTeX, long output, prompt-injection text, and symbolic equivalence being disabled by default.
+The adversarial fixtures cover multiple boxed answers, repeated identical boxed answers, correct boxed answers embedded in reasoning or negation, correct boxed candidate with wrong final answer, malformed LaTeX, long output, prompt-injection text, and symbolic equivalence being disabled by default.

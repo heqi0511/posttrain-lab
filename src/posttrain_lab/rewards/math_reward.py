@@ -79,14 +79,17 @@ def score_math_boxed_v001(
         return MathRewardResult(score=0.0, reason="malformed_boxed_answer")
     if not boxed_answers:
         return MathRewardResult(score=0.0, reason="no_boxed_answer")
+    if len(boxed_answers) > 1:
+        normalized_boxes = [normalize_math_answer(value) for value in boxed_answers]
+        if len(set(normalized_boxes)) > 1:
+            return MathRewardResult(score=0.0, reason="conflicting_boxed_answers")
+        return MathRewardResult(score=0.0, reason="multiple_boxed_answers")
+    if not _boxed_is_final_only(completion):
+        return MathRewardResult(score=0.0, reason="boxed_not_final_only")
 
     normalized_boxes = [normalize_math_answer(value) for value in boxed_answers]
     if any(not value for value in normalized_boxes):
         return MathRewardResult(score=0.0, reason="empty_boxed_answer")
-
-    unique_boxes = set(normalized_boxes)
-    if len(unique_boxes) > 1:
-        return MathRewardResult(score=0.0, reason="conflicting_boxed_answers")
 
     normalized_prediction = normalized_boxes[0]
     normalized_answer = normalize_math_answer(answer)
@@ -184,6 +187,63 @@ def _extract_boxed_answers_with_status(text: str) -> Tuple[List[str], bool]:
         start = index + 1
 
     return answers, malformed
+
+
+def _boxed_is_final_only(text: str) -> bool:
+    boxed_index = text.find(_BOXED)
+    if boxed_index < 0:
+        return False
+    close_index = _boxed_close_index(text, boxed_index)
+    if close_index is None:
+        return False
+
+    prefix = text[:boxed_index].strip().lower()
+    suffix = text[close_index + 1 :].strip()
+    return _is_allowed_final_prefix(prefix) and _is_allowed_final_suffix(suffix)
+
+
+def _boxed_close_index(text: str, boxed_index: int) -> Optional[int]:
+    group_start = boxed_index + len(_BOXED)
+    while group_start < len(text) and text[group_start].isspace():
+        group_start += 1
+    if group_start >= len(text) or text[group_start] != "{":
+        return None
+
+    depth = 1
+    index = group_start + 1
+    while index < len(text):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    return None
+
+
+def _is_allowed_final_prefix(prefix: str) -> bool:
+    if not prefix:
+        return True
+    prefix = prefix.rstrip(":：- ")
+    allowed = {
+        "answer",
+        "final answer",
+        "the answer",
+        "the final answer",
+        "therefore",
+        "thus",
+        "so",
+        "result",
+        "final",
+    }
+    return prefix in allowed
+
+
+def _is_allowed_final_suffix(suffix: str) -> bool:
+    if not suffix:
+        return True
+    return re.fullmatch(r"[\s.。!！]*", suffix) is not None
 
 
 def _strip_math_delimiters(value: str) -> str:

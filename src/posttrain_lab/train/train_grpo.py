@@ -39,6 +39,8 @@ PARSE_FAILURE_REASONS = {
     "malformed_boxed_answer",
     "empty_boxed_answer",
     "conflicting_boxed_answers",
+    "multiple_boxed_answers",
+    "boxed_not_final_only",
     "output_too_long",
 }
 
