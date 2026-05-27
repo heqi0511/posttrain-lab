@@ -332,7 +332,7 @@ def _run_trl_grpo(config, examples, output_dir):
     return float(result.training_loss), trainer.state.log_history, trainer.model, tokenizer
 
 
-def _load_policy_model_and_tokenizer(config):
+def _load_policy_model_and_tokenizer(config, move_to_accelerator=False):
     _install_trl_fsdp_compat()
     try:
         from peft import LoraConfig, PeftModel
@@ -351,6 +351,8 @@ def _load_policy_model_and_tokenizer(config):
     model = AutoModelForCausalLM.from_pretrained(config["model_name_or_path"], **_model_load_kwargs(config))
     if config.get("adapter_path"):
         model = PeftModel.from_pretrained(model, config["adapter_path"], is_trainable=True)
+        if move_to_accelerator:
+            model = _move_model_to_accelerator(model)
         return model, tokenizer, None
 
     target_modules = config["peft"].get("target_modules") or None
@@ -362,7 +364,19 @@ def _load_policy_model_and_tokenizer(config):
         task_type="CAUSAL_LM",
         target_modules=target_modules,
     )
+    if move_to_accelerator:
+        model = _move_model_to_accelerator(model)
     return model, tokenizer, peft_config
+
+
+def _move_model_to_accelerator(model):
+    try:
+        import torch
+    except ImportError:
+        return model
+    if torch.cuda.is_available():
+        return model.to("cuda")
+    return model
 
 
 def _run_rollout_format_gate(config, output_dir, examples):
@@ -379,7 +393,7 @@ def _run_rollout_format_gate(config, output_dir, examples):
             dry_run=True,
         )
     else:
-        model, tokenizer, _ = _load_policy_model_and_tokenizer(config)
+        model, tokenizer, _ = _load_policy_model_and_tokenizer(config, move_to_accelerator=True)
         rows = _write_sample_rollouts(
             output_dir / "rollout_format_gate.jsonl",
             gate_config,
@@ -580,8 +594,9 @@ def _generate_text(model, tokenizer, prompt, config):
 
     prompt_text = _generation_prompt_to_text(prompt, tokenizer, enable_thinking=config.get("enable_thinking"))
     inputs = tokenizer(prompt_text, return_tensors="pt")
-    if hasattr(model, "device"):
-        inputs = {key: value.to(model.device) for key, value in inputs.items()}
+    device = _model_device(model)
+    if device is not None:
+        inputs = {key: value.to(device) for key, value in inputs.items()}
 
     generation_kwargs = {
         "max_new_tokens": int(config["rollout"]["max_completion_length"]),
@@ -598,6 +613,15 @@ def _generate_text(model, tokenizer, prompt, config):
     prompt_length = inputs["input_ids"].shape[-1]
     generated = outputs[0][prompt_length:]
     return tokenizer.decode(generated, skip_special_tokens=True).strip()
+
+
+def _model_device(model):
+    if hasattr(model, "device"):
+        return model.device
+    try:
+        return next(model.parameters()).device
+    except (AttributeError, StopIteration):
+        return None
 
 
 def _summarize_samples(sample_rows):
