@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from posttrain_lab.train.train_grpo import (
+    _rollout_format_gate_passed,
     load_config,
     load_rlvr_train_examples,
     math_boxed_reward_func,
@@ -132,6 +133,33 @@ def test_math_boxed_reward_func_scores_batch_answers():
     )
 
     assert rewards == [1.0, 0.0]
+
+
+def test_rollout_format_gate_rejects_saturated_rewards():
+    config = {
+        "rollout_format_gate": {
+            "max_parse_failure_rate": 0.0,
+            "max_reward_mean": 0.95,
+            "max_perfect_reward_rate": 0.95,
+        }
+    }
+
+    assert not _rollout_format_gate_passed(
+        config,
+        {
+            "parse_failure_rate": 0.0,
+            "reward_mean": 1.0,
+            "perfect_reward_rate": 1.0,
+        },
+    )
+    assert _rollout_format_gate_passed(
+        config,
+        {
+            "parse_failure_rate": 0.0,
+            "reward_mean": 0.75,
+            "perfect_reward_rate": 0.75,
+        },
+    )
 
 
 def test_dry_run_grpo_writes_required_artifacts(tmp_path):

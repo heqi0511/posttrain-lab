@@ -221,7 +221,7 @@ def _rlvr_config(config, model_name, data_path, output_dir, sft_adapter_path, dr
         },
         "training": {
             "max_steps": int(config["limits"]["rlvr_max_steps"]),
-            "per_device_train_batch_size": 2,
+            "per_device_train_batch_size": int(config["limits"]["rlvr_per_device_train_batch_size"]),
             "gradient_accumulation_steps": 1,
             "learning_rate": 0.000001,
             "bf16": False,
@@ -232,7 +232,7 @@ def _rlvr_config(config, model_name, data_path, output_dir, sft_adapter_path, dr
             "save_total_limit": 1,
         },
         "rollout": {
-            "num_generations": 2,
+            "num_generations": int(config["limits"]["rlvr_num_generations"]),
             "max_completion_length": int(config["limits"]["eval_max_new_tokens"]),
             "temperature": 0.7,
             "top_p": 0.95,
@@ -242,8 +242,10 @@ def _rlvr_config(config, model_name, data_path, output_dir, sft_adapter_path, dr
         },
         "rollout_format_gate": {
             "enabled": True,
-            "sample_count": min(4, int(config["limits"]["rlvr_train_examples"])),
+            "sample_count": min(int(config["limits"]["rlvr_gate_examples"]), int(config["limits"]["rlvr_train_examples"])),
             "max_parse_failure_rate": float(config["limits"]["max_parse_failure_rate"]),
+            "max_reward_mean": None if dry_run else float(config["limits"]["max_rollout_gate_reward_mean"]),
+            "max_perfect_reward_rate": None if dry_run else float(config["limits"]["max_rollout_gate_perfect_reward_rate"]),
         },
         "peft": {
             "method": "lora",

@@ -55,6 +55,12 @@ def test_e2e_smoke_safe_mode_writes_required_artifacts(tmp_path):
         "linear_equations",
         "algebra_simplification",
     }
+    staged_rlvr = [
+        json.loads(line)
+        for line in (output_dir / "staged_data" / "rlvr_toy.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(staged_rlvr) == 80
+    assert {row["metadata"]["difficulty"] for row in staged_rlvr} >= {"medium", "hard"}
 
     assert (output_dir / "sample_generations.jsonl").read_text(encoding="utf-8").strip()
     assert (output_dir / "sample_rollouts.jsonl").read_text(encoding="utf-8").strip()

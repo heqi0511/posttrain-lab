@@ -116,6 +116,7 @@ def run_grpo(config, config_path):
 
     gate_metrics = _run_rollout_format_gate(resolved, output_dir, examples)
     if gate_metrics and not _rollout_format_gate_passed(resolved, gate_metrics):
+        failure_reason = _rollout_format_gate_failure_reason(resolved, gate_metrics)
         _write_jsonl(
             output_dir / "metrics.jsonl",
             [
@@ -126,15 +127,12 @@ def run_grpo(config, config_path):
                     "dry_run": resolved["dry_run"],
                     "smoke_run": resolved["smoke_run"],
                     "blocked_by_rollout_format_gate": True,
+                    "rollout_format_gate_failure_reason": failure_reason,
                     **_prefixed_metrics("rollout_format_gate", gate_metrics),
                 }
             ],
         )
-        raise RuntimeError(
-            "rollout-format gate failed: "
-            f"parse_failure_rate={gate_metrics['parse_failure_rate']} "
-            f"> {resolved['rollout_format_gate']['max_parse_failure_rate']}"
-        )
+        raise RuntimeError(f"rollout-format gate failed: {failure_reason}")
 
     if resolved["dry_run"]:
         trainer_log = [{"step": 0, "loss": 0.0}, {"step": int(resolved["training"]["max_steps"]), "loss": 0.0}]
@@ -251,6 +249,8 @@ def _resolve_config(config):
     resolved["rollout_format_gate"].setdefault("enabled", False)
     resolved["rollout_format_gate"].setdefault("sample_count", resolved["rollout"]["sample_count"])
     resolved["rollout_format_gate"].setdefault("max_parse_failure_rate", 0.0)
+    resolved["rollout_format_gate"].setdefault("max_reward_mean", None)
+    resolved["rollout_format_gate"].setdefault("max_perfect_reward_rate", None)
     resolved.setdefault("eval_after_train", {})
     resolved["eval_after_train"].setdefault("enabled", False)
     resolved["eval_after_train"].setdefault("prompt_path", "/tmp/posttrain_lab_eval/baseline_prompts.jsonl")
@@ -397,7 +397,29 @@ def _run_rollout_format_gate(config, output_dir, examples):
 
 
 def _rollout_format_gate_passed(config, metrics):
-    return metrics["parse_failure_rate"] <= float(config["rollout_format_gate"]["max_parse_failure_rate"])
+    return _rollout_format_gate_failure_reason(config, metrics) is None
+
+
+def _rollout_format_gate_failure_reason(config, metrics):
+    gate = config["rollout_format_gate"]
+    parse_failure_rate = metrics["parse_failure_rate"]
+    max_parse_failure_rate = float(gate["max_parse_failure_rate"])
+    if parse_failure_rate > max_parse_failure_rate:
+        return f"parse_failure_rate={parse_failure_rate} > {max_parse_failure_rate}"
+
+    max_reward_mean = gate.get("max_reward_mean")
+    if max_reward_mean is not None and metrics["reward_mean"] is not None:
+        max_reward_mean = float(max_reward_mean)
+        if metrics["reward_mean"] > max_reward_mean:
+            return f"reward_mean={metrics['reward_mean']} > {max_reward_mean}"
+
+    max_perfect_reward_rate = gate.get("max_perfect_reward_rate")
+    if max_perfect_reward_rate is not None and metrics["perfect_reward_rate"] is not None:
+        max_perfect_reward_rate = float(max_perfect_reward_rate)
+        if metrics["perfect_reward_rate"] > max_perfect_reward_rate:
+            return f"perfect_reward_rate={metrics['perfect_reward_rate']} > {max_perfect_reward_rate}"
+
+    return None
 
 
 def _prefixed_metrics(prefix, metrics):
@@ -715,6 +737,11 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- avg completion length: `{metrics['avg_completion_length']}`",
         f"- rollout format gate enabled: `{resolved['rollout_format_gate']['enabled']}`",
         f"- rollout format gate parse failure rate: `{metrics.get('rollout_format_gate_parse_failure_rate')}`",
+        f"- rollout format gate reward mean: `{metrics.get('rollout_format_gate_reward_mean')}`",
+        f"- rollout format gate reward std: `{metrics.get('rollout_format_gate_reward_std')}`",
+        f"- rollout format gate perfect reward rate: `{metrics.get('rollout_format_gate_perfect_reward_rate')}`",
+        f"- rollout format gate max reward mean: `{resolved['rollout_format_gate'].get('max_reward_mean')}`",
+        f"- rollout format gate max perfect reward rate: `{resolved['rollout_format_gate'].get('max_perfect_reward_rate')}`",
         f"- dry run: `{resolved['dry_run']}`",
         f"- train examples: `{resolved['selection']['max_train_examples']}`",
         f"- max steps: `{resolved['training']['max_steps']}`",

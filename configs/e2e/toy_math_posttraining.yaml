@@ -15,9 +15,14 @@ limits:
   max_parse_failure_rate: 0.0
   sft_train_examples: 80
   sft_val_examples: 10
-  rlvr_train_examples: 24
+  rlvr_train_examples: 80
+  rlvr_gate_examples: 32
+  max_rollout_gate_reward_mean: 0.95
+  max_rollout_gate_perfect_reward_rate: 0.95
   sft_max_steps: 2
   real_sft_max_steps: 300
   real_sft_learning_rate: 0.0005
-  rlvr_max_steps: 1
+  rlvr_max_steps: 50
+  rlvr_num_generations: 4
+  rlvr_per_device_train_batch_size: 4
   eval_max_new_tokens: 32

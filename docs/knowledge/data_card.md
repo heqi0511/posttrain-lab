@@ -49,7 +49,7 @@ make validate-data
 
 ## Synthetic E2E Math Fixture
 
-Status: `synthetic-e2e-diverse-v1` is a toy fixture for pipeline and SFT smoke testing, not a real math benchmark.
+Status: `synthetic-e2e-diverse-v2` is a toy fixture for pipeline, SFT smoke testing, and small RLVR signal checks, not a real math benchmark.
 
 Files:
 
@@ -63,7 +63,8 @@ Split policy for the E2E SFT smoke path:
 - Validation: `10` SFT records.
 - Heldout eval: `10` JSONL eval prompts.
 - Intended ratio: `80/10/10` across train/validation/eval.
-- RLVR fixture: `24` train, `3` validation, and `3` test prompts; the current E2E smoke uses only the train split.
+- RLVR fixture: `96` train, `12` validation, and `12` test prompts; the current E2E smoke stages the first `80` train prompts.
+- RLVR pre-training gate: checks `32` rollout samples for zero parse failures and rejects near-saturated reward signal above configured reward ceilings.
 
 Coverage:
 
