@@ -141,4 +141,21 @@ Record training and eval runs here with links to run directories, run cards, res
 - Required root artifacts: `baseline_eval_report.json`, `sft_run_card.md`, `sft_eval_report.json`, `rlvr_run_card.md`, `rlvr_eval_report.json`, `comparison_report.md`, `sample_generations.jsonl`, and `sample_rollouts.jsonl`.
 - Fail-fast gates: data validation errors, reward check failures, output length above config, or parse failure rate above the stage-specific config.
 - Baseline eval may use a looser parse-failure threshold so base-model format failures can be recorded for comparison; SFT and RLVR remain strict by default.
-- Current status: implementation ready for safe-mode CI smoke; real model run has not been launched in this entry.
+- Current status: safe-mode CI smoke passed; Nexus real-model smoke completed.
+
+### 2026-05-27 Nexus Qwen3-0.6B Real E2E Smoke
+
+- Final Slurm job: `6916056` on `cbcb-heng`, RTX A5000, completed successfully in `00:02:18`.
+- Git commit: `6709384a5bbf0888378ea2ec96aadaf954f2454d`.
+- Output path: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/6709384-e2e-real-run3/runs/e2e/toy_math_posttraining/`.
+- Run mode: `real-model run`.
+- Base eval: exact match `0.0`, format success `0.0`, parse failure rate `1.0`, average output length `36.5`.
+- SFT eval: exact match `1.0`, format success `1.0`, parse failure rate `0.0`, average output length `9.0`.
+- SFT training: `32` train examples, `2` validation examples, `200` max steps, final train loss `0.1998`, validation loss `0.4440`.
+- RLVR smoke: `8` train prompts, `1` GRPO step, `2` generations, max completion length `32`.
+- RLVR metrics: reward mean `1.0`, reward std `0.0`, zero reward rate `0.0`, perfect reward rate `1.0`, parse failure rate `0.0`, average completion length `9.75`.
+- RLVR eval: exact match `1.0`, format success `1.0`, parse failure rate `0.0`, average output length `9.0`.
+- Comparison conclusion: SFT fixed the toy heldout boxed-answer eval relative to base; SFT+RLVR did not improve heldout target accuracy beyond SFT on this tiny eval.
+- Sample generations and rollouts were final-only boxed answers such as `\boxed{4}`, `\boxed{5}`, and `\boxed{11}`.
+- Failed setup attempts before the final run: job `6915931` stopped at the baseline parse-failure gate, and job `6915984` stopped because 2-step SFT still had parse failure rate `1.0`.
+- Caveat: this is still a toy smoke run. RLVR started from an already format-perfect SFT adapter, so reward std was `0.0` and the GRPO step did not provide meaningful learning pressure.
