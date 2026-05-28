@@ -1,0 +1,34 @@
+input_path: data/rlvr_prompts/gsm8k_train.jsonl
+output_dir: runs/rlvr/gsm8k_frontier_audit_thinking_true
+filtered_output_path: runs/rlvr/gsm8k_frontier_audit_thinking_true/frontier_grpo_train.jsonl
+excluded_output_path: runs/rlvr/gsm8k_frontier_audit_thinking_true/frontier_excluded.jsonl
+dry_run: false
+model_name_or_path: Qwen/Qwen3-4B
+adapter_path: null
+seed: 43
+torch_dtype: bfloat16
+trust_remote_code: false
+enable_thinking: true
+reward_version: math_boxed_v001
+selection:
+  split: train
+  max_prompts: 300
+rollout:
+  completions_per_prompt: 16
+  max_new_tokens: 384
+  temperature: 0.9
+  top_p: 0.95
+  top_k: 0
+frontier:
+  min_reward_mean: 0.2
+  max_reward_mean: 0.8
+  max_parse_failure_rate: 0.2
+  min_unique_answer_count: 3
+review:
+  max_prompts: 30
+peft:
+  method: lora
+  r: 8
+  lora_alpha: 16
+  lora_dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]

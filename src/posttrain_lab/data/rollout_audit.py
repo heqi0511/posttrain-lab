@@ -357,6 +357,12 @@ def _summary(prompt_reports, config, filtered_output_path, excluded_output_path,
         "all_one_count": bucket_counts["all_one"],
         "mixed_count": bucket_counts["mixed"],
         "bucket_counts": bucket_counts,
+        "all_zero_rate": bucket_counts["all_zero"] / total if total else 0.0,
+        "all_one_rate": bucket_counts["all_one"] / total if total else 0.0,
+        "mixed_rate": bucket_counts["mixed"] / total if total else 0.0,
+        "parse_failure_rate": _mean_prompt_metric(prompt_reports, "parse_failure_rate"),
+        "unique_answer_count": _mean_prompt_metric(prompt_reports, "unique_answer_count"),
+        "avg_completion_length": _mean_prompt_metric(prompt_reports, "avg_completion_length"),
         "kept_prompt_count": kept,
         "excluded_prompt_count": total - kept,
         "exclude_reason_counts": exclude_reason_counts,
@@ -365,6 +371,12 @@ def _summary(prompt_reports, config, filtered_output_path, excluded_output_path,
         "frontier_filter": config["frontier"],
         "no_training_executed": True,
     }
+
+
+def _mean_prompt_metric(prompt_reports, key):
+    if not prompt_reports:
+        return 0.0
+    return sum(float(report[key]) for report in prompt_reports) / len(prompt_reports)
 
 
 def _write_prompt_csv(path, prompt_reports):

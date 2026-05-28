@@ -86,6 +86,12 @@ def test_rollout_audit_writes_frontier_artifacts_without_training(tmp_path):
     assert summary["all_zero_count"] == 4
     assert summary["all_one_count"] == 2
     assert summary["mixed_count"] == 4
+    assert summary["all_zero_rate"] == 0.4
+    assert summary["all_one_rate"] == 0.2
+    assert summary["mixed_rate"] == 0.4
+    assert summary["parse_failure_rate"] == 0.2
+    assert summary["unique_answer_count"] > 0
+    assert summary["avg_completion_length"] > 0
     assert summary["kept_prompt_count"] == 2
     assert summary["effective_mixed_group_rate"] == 0.4
     assert summary["exclude_reason_counts"] == {

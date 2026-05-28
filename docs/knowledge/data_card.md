@@ -87,6 +87,48 @@ Integrity notes:
 - The filtered output preserves the original RLVR record schema and validates through `make validate-data` when present.
 - Real model audits should be treated as GPU inference jobs; cache and review audit outputs before launching GRPO.
 
+## GSM8K RLVR Staging
+
+Status: GSM8K conversion workflow is available for frontier audit with `Qwen/Qwen3-4B`; no GSM8K files are committed by default.
+
+Conversion command:
+
+```bash
+make gsm8k-rlvr-data
+```
+
+Output files:
+
+- `data/rlvr_prompts/gsm8k_train.jsonl`
+- `data/rlvr_prompts/gsm8k_train_summary.json`
+
+Split policy:
+
+- Only the official GSM8K `train` split is converted for RLVR training, audit, and filtering.
+- The converter refuses `test` split conversion for this workflow.
+- Audit configs read only `data/rlvr_prompts/gsm8k_train.jsonl`.
+- Official GSM8K test examples must remain out of training, rollout audit, frontier filtering, and GRPO train sets.
+
+Answer parsing:
+
+- The verifier answer is parsed from the final `####` field in each GSM8K answer.
+- Commas and currency markers are removed from the verifier answer because the prompt asks the model not to use commas in boxed numeric answers.
+- Prompts ask for exactly one final `\boxed{...}` answer and no reasoning, matching `math_boxed_v001`.
+
+Pilot frontier audit configs:
+
+- `configs/rlvr/gsm8k_frontier_audit_thinking_false.yaml`
+- `configs/rlvr/gsm8k_frontier_audit_thinking_true.yaml`
+
+Pilot audit settings:
+
+- Model: `Qwen/Qwen3-4B`.
+- Prompt count: `300` train prompts.
+- Completions per prompt: `16`.
+- Sampling: temperature `0.9`, top_p `0.95`.
+- Frontier filter: `0.2 <= reward_mean <= 0.8`, `parse_failure_rate <= 0.2`, `unique_answer_count >= 3`.
+- The audit is inference-only and must not execute trainer steps.
+
 ## Synthetic E2E Math Fixture
 
 Status: `synthetic-e2e-diverse-v2` is a toy fixture for pipeline, SFT smoke testing, and small RLVR signal checks, not a real math benchmark.
