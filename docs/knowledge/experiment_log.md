@@ -244,3 +244,16 @@ Record training and eval runs here with links to run directories, run cards, res
 - Category breakdown: truncated_before_final `36` (`38.30%`), no_boxed_answer `35` (`37.23%`), final_answer_unboxed `15` (`15.96%`), parser_too_strict `5` (`5.32%`), malformed_boxed `3` (`3.19%`), all other categories `0`.
 - Truncation caveat: the audit file did not record generated token counts, so truncation was estimated from completion character length against `max_new_tokens=128`.
 - Recommended next action: increase `max_new_tokens`, strengthen the final-answer prompt, and run a boxed-format SFT warmup before any GSM8K GRPO smoke. Do not start GRPO from the current filtered set.
+
+### 2026-05-28 GSM8K Qwen3-4B Prompt Sweep
+
+- Goal: no-training prompt/generation sweep before SFT or GRPO.
+- Config: `configs/audit/gsm8k_qwen3_4b_prompt_sweep.yaml`.
+- Runner: `runs/audit/gsm8k_qwen3_4b_prompt_sweep/run_prompt_sweep.py`.
+- Model: `Qwen/Qwen3-4B`; sample: fixed random `300` GSM8K train prompts; generations per prompt: `8`; temperature `0.9`; top_p `0.95`.
+- Full Slurm array: job `6927608`, variants `current_128`, `strong_128`, `strong_512`, `strong_1024`, `strong_nonthinking_512`, and `strong_thinking_1024`.
+- Full array status: queued until after the 2026-05-28 16:45-20:00 monthly maintenance window; no training is involved.
+- Short pre-maintenance array: job `6927609`, variants `current_128` and `strong_128`, completed successfully.
+- `current_128` result: reward_mean `0.3842`, format_success_rate `0.3983`, parse_failure_rate `0.6017`, correctness_given_parse `0.9644`, any_correct_prompt_rate `0.5533`, all_correct_prompt_rate `0.1900`, mixed_prompt_rate `0.3633`, all_zero_rate `0.4467`, avg_completion_length `328.14`, truncation_rate `0.7533`.
+- `strong_128` default-thinking result: reward_mean `0.0`, format_success_rate `0.0`, parse_failure_rate `1.0`, truncation_rate `1.0`, with `2399/2400` failures from `unclosed_think_block`.
+- Interim interpretation: `current_128` is dominated by truncation, while `strong_128` without explicit non-thinking mode triggers thinking-mode interference. The final recommendation should wait for the 512/1024 and explicit non-thinking/thinking variants.
