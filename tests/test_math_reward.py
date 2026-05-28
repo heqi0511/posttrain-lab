@@ -61,6 +61,29 @@ def test_math_boxed_v001_strips_closed_think_blocks_before_parsing():
     assert extract_boxed_answers("<think>Wrong: \\boxed{3}</think>\n\\boxed{4}") == ["4"]
 
 
+def test_math_boxed_v001_accepts_reasoning_before_single_final_boxed_answer():
+    completion = (
+        "Natalia sold 48 clips in April. In May she sold half as many, "
+        "so 48 + 24 = 72. $\\boxed{72}$"
+    )
+
+    result = score_math_boxed_v001(completion, "72")
+
+    assert result.score == 1.0
+    assert result.reason == "exact_match"
+    assert result.normalized_prediction == "72"
+
+
+def test_math_boxed_v001_strips_think_then_accepts_visible_final_boxed_answer():
+    completion = "<think>Wrong hidden attempt: \\boxed{71}</think>\nThe final answer is $\\boxed{72}$."
+
+    result = score_math_boxed_v001(completion, "72")
+
+    assert result.score == 1.0
+    assert result.reason == "exact_match"
+    assert result.normalized_prediction == "72"
+
+
 def test_math_boxed_v001_does_not_accept_unclosed_think_blocks():
     result = score_math_boxed_v001("<think>Try 4.\n\\boxed{4}", "4")
 

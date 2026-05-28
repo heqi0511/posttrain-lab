@@ -73,6 +73,9 @@ def score_math_boxed(completion: str, expected_answer: str, symbolic: bool = Fal
     repeated identical boxed answers.
     """
 
+    if _has_unclosed_think_block(completion):
+        return RewardResult(0.0, None, "unclosed_think_block")
+
     scored_completion = _strip_think_blocks(completion)
     boxed_answers, malformed = _extract_boxed_answers_with_status(scored_completion)
     if malformed:
@@ -110,6 +113,8 @@ def score_math_boxed_v001(
         return MathRewardResult(score=0.0, reason="output_too_long")
     if len(answer) > config.max_answer_chars:
         return MathRewardResult(score=0.0, reason="answer_too_long")
+    if _has_unclosed_think_block(completion):
+        return MathRewardResult(score=0.0, reason="unclosed_think_block")
 
     scored_completion = _strip_think_blocks(completion)
     boxed_answers, malformed = _extract_boxed_answers_with_status(scored_completion)
@@ -231,6 +236,18 @@ def _strip_think_blocks(text: str) -> str:
     return re.sub(r"<think\b[^>]*>.*?</think>", "", text, flags=re.IGNORECASE | re.DOTALL)
 
 
+def _has_unclosed_think_block(text: str) -> bool:
+    depth = 0
+    for match in re.finditer(r"</think>|<think\b[^>]*>", text, flags=re.IGNORECASE):
+        tag = match.group(0).lower()
+        if tag.startswith("</"):
+            if depth > 0:
+                depth -= 1
+        else:
+            depth += 1
+    return depth > 0
+
+
 def _boxed_is_final_only(text: str) -> bool:
     boxed_index = text.find(_BOXED)
     if boxed_index < 0:
@@ -239,9 +256,8 @@ def _boxed_is_final_only(text: str) -> bool:
     if close_index is None:
         return False
 
-    prefix = text[:boxed_index].strip().lower()
     suffix = text[close_index + 1 :].strip()
-    return _is_allowed_final_prefix(prefix) and _is_allowed_final_suffix(suffix)
+    return _is_allowed_final_suffix(suffix)
 
 
 def _boxed_close_index(text: str, boxed_index: int) -> Optional[int]:
@@ -264,28 +280,10 @@ def _boxed_close_index(text: str, boxed_index: int) -> Optional[int]:
     return None
 
 
-def _is_allowed_final_prefix(prefix: str) -> bool:
-    if not prefix:
-        return True
-    prefix = prefix.rstrip(":：- ")
-    allowed = {
-        "answer",
-        "final answer",
-        "the answer",
-        "the final answer",
-        "therefore",
-        "thus",
-        "so",
-        "result",
-        "final",
-    }
-    return prefix in allowed
-
-
 def _is_allowed_final_suffix(suffix: str) -> bool:
     if not suffix:
         return True
-    return re.fullmatch(r"[\s.。!！]*", suffix) is not None
+    return re.fullmatch(r"(?:\$|\\\)|\\\]|[\s.。!！])*", suffix) is not None
 
 
 def _strip_math_delimiters(value: str) -> str:

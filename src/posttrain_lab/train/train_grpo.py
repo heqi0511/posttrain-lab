@@ -43,6 +43,7 @@ PARSE_FAILURE_REASONS = {
     "conflicting_boxed_answers",
     "multiple_boxed_answers",
     "boxed_not_final_only",
+    "unclosed_think_block",
     "output_too_long",
 }
 

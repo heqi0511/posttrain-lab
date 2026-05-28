@@ -21,6 +21,7 @@ PARSE_FAILURE_REASONS = {
     "malformed_boxed_answer",
     "empty_boxed_answer",
     "boxed_not_final_only",
+    "unclosed_think_block",
 }
 
 
