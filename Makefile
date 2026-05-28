@@ -1,4 +1,4 @@
-.PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-small compare-runs e2e-smoke
+.PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-small compare-runs e2e-smoke
 
 format:
 	@echo "format placeholder: no formatter configured yet"
@@ -20,6 +20,7 @@ validate-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type rlvr --path tests/fixtures/rlvr_good.jsonl
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type sft --path data/fixtures/e2e/sft_seed.jsonl
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type rlvr --path data/fixtures/e2e/rlvr_seed.jsonl
+	@if [ -f data/rlvr_prompts/frontier_grpo_train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.validate --type rlvr --path data/rlvr_prompts/frontier_grpo_train.jsonl; fi
 
 check-leakage:
 	@echo "check-leakage placeholder: no leakage checker configured yet"
@@ -43,6 +44,9 @@ rlvr-smoke:
 
 rlvr-smoke-qwen3:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_grpo --config configs/rlvr/qwen3_0_6b_grpo_smoke.yaml
+
+rlvr-frontier-audit:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.data.rollout_audit --config configs/rlvr/frontier_prompt_audit.yaml
 
 rlvr-small: eval-baseline
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 python3 -m posttrain_lab.train.train_grpo --config configs/rlvr/math_1k_grpo.yaml

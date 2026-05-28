@@ -1,0 +1,34 @@
+input_path: data/fixtures/e2e/rlvr_seed.jsonl
+output_dir: data/rlvr_prompts/frontier_audit
+filtered_output_path: data/rlvr_prompts/frontier_grpo_train.jsonl
+excluded_output_path: data/rlvr_prompts/frontier_excluded.jsonl
+dry_run: true
+model_name_or_path: Qwen/Qwen3-0.6B
+adapter_path: null
+seed: 31
+torch_dtype: auto
+trust_remote_code: false
+enable_thinking: false
+reward_version: math_boxed_v001
+selection:
+  split: train
+  max_prompts: 20
+rollout:
+  completions_per_prompt: 16
+  max_new_tokens: 32
+  temperature: 0.7
+  top_p: 0.95
+  top_k: 0
+frontier:
+  min_reward_mean: 0.2
+  max_reward_mean: 0.8
+  max_parse_failure_rate: 0.5
+  min_unique_answer_count: 3
+review:
+  max_prompts: 20
+peft:
+  method: lora
+  r: 4
+  lora_alpha: 8
+  lora_dropout: 0.0
+  target_modules: []

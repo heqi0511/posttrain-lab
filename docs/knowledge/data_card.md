@@ -47,6 +47,46 @@ python -m posttrain_lab.data.validate --type rlvr --path <file>
 make validate-data
 ```
 
+## RLVR Frontier Prompt Audit
+
+Status: offline prompt selection tooling is available for GRPO signal checks. It samples completions before training, computes per-prompt reward statistics, and writes a schema-valid filtered RLVR train set.
+
+Default command:
+
+```bash
+make rlvr-frontier-audit
+```
+
+Default config: `configs/rlvr/frontier_prompt_audit.yaml`.
+
+Default safety settings:
+
+- `dry_run: true`; no model is loaded and no trainer step is executed.
+- `selection.max_prompts: 20`.
+- `rollout.completions_per_prompt: 16`.
+- Source data: `data/fixtures/e2e/rlvr_seed.jsonl`.
+- Filtered train output: `data/rlvr_prompts/frontier_grpo_train.jsonl`.
+
+Audit artifacts:
+
+- `data/rlvr_prompts/frontier_audit/rollout_audit_summary.json`
+- `data/rlvr_prompts/frontier_audit/rollout_audit_by_prompt.csv`
+- `data/rlvr_prompts/frontier_audit/sample_rollouts_for_review.jsonl`
+- `data/rlvr_prompts/frontier_excluded.jsonl`
+
+Filtering policy:
+
+- Keep prompts with `0.2 <= reward_mean <= 0.8`.
+- Require `parse_failure_rate <= 0.5`.
+- Require `unique_answer_count >= 3`.
+- Excluded prompts are labeled as `all_zero`, `all_one`, `parse_fail`, or `low_diversity`.
+
+Integrity notes:
+
+- The audit does not modify reward semantics.
+- The filtered output preserves the original RLVR record schema and validates through `make validate-data` when present.
+- Real model audits should be treated as GPU inference jobs; cache and review audit outputs before launching GRPO.
+
 ## Synthetic E2E Math Fixture
 
 Status: `synthetic-e2e-diverse-v2` is a toy fixture for pipeline, SFT smoke testing, and small RLVR signal checks, not a real math benchmark.
