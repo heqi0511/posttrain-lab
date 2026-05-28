@@ -4,7 +4,7 @@
 #SBATCH --account=cbcb-heng
 #SBATCH --gres=gpu:rtxa5000:1
 #SBATCH --time=08:00:00
-#SBATCH --mem=36G
+#SBATCH --mem=30G
 #SBATCH --cpus-per-task=4
 #SBATCH --array=0-5
 #SBATCH --output=/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/5a83769-gsm8k-frontier-audit/slurm/gsm8k_sweep_%A_%a.out
