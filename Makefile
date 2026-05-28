@@ -1,4 +1,4 @@
-.PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit rlvr-small compare-runs e2e-smoke
+.PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
 PYTHON ?= python3
 
 format:
@@ -73,6 +73,9 @@ rlvr-gsm8k-audit-thinking-true: gsm8k-rlvr-data
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/gsm8k_frontier_audit_thinking_true.yaml
 
 rlvr-gsm8k-audit: rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true
+
+diagnose-parse-failures:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.diagnostics.parse_failure_taxonomy --output-dir data/reports/parse_failure_taxonomy
 
 rlvr-small: eval-baseline
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_grpo --config configs/rlvr/math_1k_grpo.yaml

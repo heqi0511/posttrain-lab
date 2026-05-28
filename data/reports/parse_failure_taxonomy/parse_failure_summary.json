@@ -1,0 +1,44 @@
+{
+  "category_counts": {
+    "final_answer_unboxed": 15,
+    "malformed_boxed": 3,
+    "no_boxed_answer": 35,
+    "parser_too_strict": 5,
+    "truncated_before_final": 36
+  },
+  "category_fractions_of_parse_failures": {
+    "final_answer_unboxed": 0.1595744680851064,
+    "malformed_boxed": 0.031914893617021274,
+    "multiple_conflicting_boxed_answers": 0.0,
+    "no_boxed_answer": 0.3723404255319149,
+    "non_numeric_boxed_answer": 0.0,
+    "other": 0.0,
+    "parser_too_strict": 0.05319148936170213,
+    "thinking_mode_interference": 0.0,
+    "truncated_before_final": 0.3829787234042553
+  },
+  "chars_per_token_estimate": 3.2,
+  "config_path": "runs/rlvr/gsm8k_frontier_scout_thinking_false/resolved_config.yaml",
+  "failure_reason_counts": {
+    "boxed_not_final_only": 5,
+    "malformed_boxed_answer": 6,
+    "no_boxed_answer": 83
+  },
+  "input_path": "runs/rlvr/gsm8k_frontier_scout_thinking_false/sample_rollouts_for_review.jsonl",
+  "max_new_tokens": 128,
+  "no_training_executed": true,
+  "notes": [
+    "This diagnostic does not change reward semantics or parser behavior.",
+    "Truncation is exact only when token-count fields exist; otherwise it is estimated from completion length.",
+    "The current GSM8K scout saved review rollouts for the first 20 prompts, not all 800 completions."
+  ],
+  "parse_failure_count": 94,
+  "parse_failure_rate_in_file": 0.5875,
+  "recommendations": [
+    "increase max_new_tokens",
+    "strengthen prompt",
+    "run format SFT warmup",
+    "do not run GRPO smoke until parse failures are reduced"
+  ],
+  "total_completions_in_file": 160
+}

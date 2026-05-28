@@ -233,3 +233,14 @@ Record training and eval runs here with links to run directories, run cards, res
 - Thinking=true rerun job `6923400` was stopped after 20 prompts to avoid wasted GPU. Partial summary: all-zero `20`, mixed `0`, parse failure rate `1.0`, caused by unclosed `<think>` generations under the short token budget.
 - Main diagnosis: the parser fix worked and revealed real mixed reward groups for thinking=false, but the current prompt/model combination still often omits final boxed answers, appends units after boxed answers, or produces too little answer diversity for the strict frontier filter.
 - Recommendation: do not start GRPO from this filtered GSM8K scout yet. First run a short boxed-format SFT warmup or strengthen the prompt/decoding so parse failure drops below the frontier threshold; use thinking=false for now unless thinking=true is given a much larger completion budget and a format gate.
+
+### 2026-05-28 GSM8K Parse-Failure Taxonomy
+
+- Diagnostic command: `make diagnose-parse-failures`.
+- Input completions: `runs/rlvr/gsm8k_frontier_scout_thinking_false/sample_rollouts_for_review.jsonl`.
+- Output files: `data/reports/parse_failure_taxonomy/parse_failure_summary.json`, `parse_failure_by_completion.csv`, and `parse_failure_examples.md`.
+- Scope caveat: the scout saved review rollouts for the first `20` prompts only, so this taxonomy covers `160` completions rather than the full `800` audit completions.
+- Parse failures in the review file: `94 / 160 = 58.75%`.
+- Category breakdown: truncated_before_final `36` (`38.30%`), no_boxed_answer `35` (`37.23%`), final_answer_unboxed `15` (`15.96%`), parser_too_strict `5` (`5.32%`), malformed_boxed `3` (`3.19%`), all other categories `0`.
+- Truncation caveat: the audit file did not record generated token counts, so truncation was estimated from completion character length against `max_new_tokens=128`.
+- Recommended next action: increase `max_new_tokens`, strengthen the final-answer prompt, and run a boxed-format SFT warmup before any GSM8K GRPO smoke. Do not start GRPO from the current filtered set.
