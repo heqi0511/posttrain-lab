@@ -195,3 +195,25 @@ Record training and eval runs here with links to run directories, run cards, res
 - Representative failures unchanged after RLVR: fraction addition and harder linear equations, for example `3/4 + 1/6` predicted `\boxed{5/12}` instead of `\boxed{11/12}` and `5x - 4 = 2x + 17` predicted `\boxed{6}` instead of `\boxed{7}`.
 - Cancelled setup attempt: job `6916896` was stopped after SFT because the pre-RL rollout gate path was running inefficiently on CPU. Commit `5c2676e` fixed gate rollout device placement and reran from a clean worktree.
 - Caveat: this is still a smoke-scale synthetic run. Next RLVR iteration should increase within-prompt sampling diversity or use a policy/init where the four sampled completions for the same prompt receive mixed rewards.
+
+### 2026-05-27 Nexus Qwen3-0.6B Frontier GRPO Smoke
+
+- Git commit: `0b8b437b6238fe2c46e7af3c4af0229c2b1a6d8a`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/0b8b437-frontier-grpo-smoke/`.
+- Source policy: `Qwen/Qwen3-0.6B` initialized from the boxed SFT adapter from run `6916959`.
+- Frontier audit job: `6917321` on `cbcb-heng`, RTX A5000, completed successfully in `00:03:38`.
+- Audit config: `32` train prompts, `16` completions per prompt, temperature `0.9`, top_p `0.95`, max new tokens `384`.
+- Audit result: `19` all-zero prompts, `4` all-one prompts, `9` mixed prompts, effective mixed group rate `0.28125`.
+- Filtered GRPO set: `4` prompts kept with `0.2 <= reward_mean <= 0.8`, parse failure rate `<= 0.5`, and unique answer count `>= 3`.
+- Filtered dataset path: `runs/rlvr/frontier_prompt_audit_real_32/frontier_grpo_train.jsonl`; schema validation passed.
+- Cancelled setup attempt: audit job `6917291` was stopped before summary output because `96` prompts was too large for a smoke run.
+- GRPO job: `6917423` on `cbcb-heng`, RTX A5000, completed successfully in `00:01:03`.
+- GRPO config: `4` frontier prompts, `30` steps, `8` generations, temperature `0.9`, top_p `0.95`, max completion length `384`.
+- Early stop rule: stop after `frac_reward_zero_std > 0.8` for `20` consecutive logged steps; it did not trigger because almost all groups were mixed.
+- Rollout-format gate before training: reward mean `0.34375`, reward std `0.4750`, zero reward rate `0.65625`, perfect reward rate `0.34375`, parse failure rate `0.0`, effective mixed group rate `1.0`.
+- Training metrics: reward mean `0.3708`, reward std `0.4132`, zero reward rate `0.5`, perfect reward rate `0.5`, parse failure rate `0.0`, average completion length `7.575`.
+- Signal metrics: average `frac_reward_zero_std` `0.0333`, effective mixed group rate `0.9667`, nonzero grad step rate `0.9667`.
+- Trainer log detail: `29/30` logged steps had mixed reward groups, and all `29` mixed steps had nonzero `grad_norm`.
+- Compared with run `6916959`, average `frac_reward_zero_std` dropped from about `0.84` to `0.0333`, so frontier selection materially improved within-group advantage signal.
+- Sample rollouts contain multiple mixed reward vectors, for example `[1,0,0,1,1,0,0,0]`, `[0,1,0,0,1,1,1,0]`, and `[0,1,0,0,0,0,0,0]`.
+- Heldout eval was not run in this smoke. This result only proves that the frontier-selected GRPO loop now receives a nonzero training signal.
