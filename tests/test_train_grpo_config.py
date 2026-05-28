@@ -3,6 +3,8 @@ from pathlib import Path
 
 from posttrain_lab.train.train_grpo import (
     _rollout_format_gate_passed,
+    _summarize_samples,
+    _summarize_trainer_signal,
     load_config,
     load_rlvr_train_examples,
     math_boxed_reward_func,
@@ -114,6 +116,19 @@ def test_qwen3_smoke_config_uses_sft_adapter_and_format_gate():
     assert "sft_init" in config["output_dir"]
 
 
+def test_frontier_grpo_smoke_config_records_requested_sampling_and_early_stop():
+    config = load_config("configs/rlvr/frontier_grpo_smoke.yaml")
+
+    assert config["rollout"]["num_generations"] == 8
+    assert config["rollout"]["temperature"] == 0.9
+    assert config["rollout"]["top_p"] == 0.95
+    assert config["rollout"]["max_completion_length"] == 384
+    assert config["rollout"]["sample_rollout_generations"] == 8
+    assert config["training"]["frac_reward_zero_std_early_stop"] is True
+    assert config["training"]["frac_reward_zero_std_threshold"] == 0.8
+    assert config["training"]["frac_reward_zero_std_patience"] == 20
+
+
 def test_load_rlvr_train_examples_selects_exact_train_records(tmp_path):
     data_path = tmp_path / "rlvr.jsonl"
     write_rlvr_jsonl(data_path, 6)
@@ -160,6 +175,56 @@ def test_rollout_format_gate_rejects_saturated_rewards():
             "perfect_reward_rate": 0.75,
         },
     )
+
+
+def test_summarize_samples_reports_frontier_group_signal():
+    metrics = _summarize_samples(
+        [
+            {
+                "reward_vector": [0.0, 1.0, 0.0, 1.0],
+                "parse_failure_vector": [False, False, False, False],
+                "completion_lengths": [10, 12, 14, 16],
+            },
+            {
+                "reward_vector": [1.0, 1.0, 1.0, 1.0],
+                "parse_failure_vector": [False, False, False, False],
+                "completion_lengths": [8, 8, 8, 8],
+            },
+        ]
+    )
+
+    assert metrics["reward_mean"] == 0.75
+    assert metrics["frac_reward_zero_std"] == 0.5
+    assert metrics["effective_mixed_group_rate"] == 0.5
+    assert metrics["parse_failure_rate"] == 0.0
+
+
+def test_summarize_trainer_signal_reports_nonzero_grad_on_mixed_steps():
+    metrics = _summarize_trainer_signal(
+        [
+            {
+                "step": 1,
+                "frac_reward_zero_std": 1.0,
+                "reward": 0.0,
+                "reward_std": 0.0,
+                "grad_norm": 0.0,
+                "completions/mean_length": 40,
+            },
+            {
+                "step": 2,
+                "frac_reward_zero_std": 0.0,
+                "reward": 0.5,
+                "reward_std": 0.5,
+                "grad_norm": 0.25,
+                "completions/mean_length": 52,
+            },
+        ]
+    )
+
+    assert metrics["frac_reward_zero_std"] == 0.5
+    assert metrics["effective_mixed_group_rate"] == 0.5
+    assert metrics["nonzero_grad_step_rate"] == 0.5
+    assert metrics["avg_completion_length"] == 46
 
 
 def test_dry_run_grpo_writes_required_artifacts(tmp_path):

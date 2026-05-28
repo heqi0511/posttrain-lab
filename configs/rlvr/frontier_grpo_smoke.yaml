@@ -1,0 +1,51 @@
+run_name: frontier-grpo-smoke
+model_name_or_path: Qwen/Qwen3-0.6B
+adapter_path: null
+data_path: data/rlvr_prompts/frontier_grpo_train.jsonl
+output_dir: runs/rlvr/frontier_grpo_smoke
+dry_run: true
+synthetic_data_if_missing: false
+smoke_run: true
+seed: 31
+torch_dtype: auto
+trust_remote_code: false
+enable_thinking: false
+reward_version: math_boxed_v001
+selection:
+  train_split: train
+  max_train_examples: 4
+training:
+  max_steps: 30
+  per_device_train_batch_size: 8
+  gradient_accumulation_steps: 1
+  learning_rate: 0.000001
+  bf16: false
+  fp16: false
+  gradient_checkpointing: false
+  logging_steps: 1
+  save_steps: 30
+  save_total_limit: 1
+  frac_reward_zero_std_early_stop: true
+  frac_reward_zero_std_threshold: 0.8
+  frac_reward_zero_std_patience: 20
+rollout:
+  num_generations: 8
+  max_completion_length: 384
+  temperature: 0.9
+  top_p: 0.95
+  top_k: 0
+  beta: 0.0
+  sample_count: 4
+  sample_rollout_generations: 8
+rollout_format_gate:
+  enabled: false
+  sample_count: 4
+  max_parse_failure_rate: 0.5
+peft:
+  method: lora
+  r: 4
+  lora_alpha: 8
+  lora_dropout: 0.0
+  target_modules: []
+eval_after_train:
+  enabled: false

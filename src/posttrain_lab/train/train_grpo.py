@@ -161,6 +161,7 @@ def run_grpo(config, config_path):
 
     eval_outputs = _run_eval_after_grpo(resolved, output_dir)
     metrics = _summarize_samples(sample_rows)
+    metrics.update(_summarize_trainer_signal(trainer_log))
     metrics.update(
         {
             "step": int(resolved["training"]["max_steps"]),
@@ -238,6 +239,9 @@ def _resolve_config(config):
     resolved["training"].setdefault("logging_steps", 1)
     resolved["training"].setdefault("save_steps", resolved["training"]["max_steps"])
     resolved["training"].setdefault("save_total_limit", 1)
+    resolved["training"].setdefault("frac_reward_zero_std_early_stop", False)
+    resolved["training"].setdefault("frac_reward_zero_std_threshold", 0.8)
+    resolved["training"].setdefault("frac_reward_zero_std_patience", 20)
     resolved["rollout"].setdefault("num_generations", 2)
     resolved["rollout"].setdefault("max_completion_length", 16)
     resolved["rollout"].setdefault("temperature", 0.7)
@@ -245,6 +249,7 @@ def _resolve_config(config):
     resolved["rollout"].setdefault("top_k", 0)
     resolved["rollout"].setdefault("beta", 0.0)
     resolved["rollout"].setdefault("sample_count", 4)
+    resolved["rollout"].setdefault("sample_rollout_generations", 1)
     resolved.setdefault("rollout_format_gate", {})
     resolved["rollout_format_gate"].setdefault("enabled", False)
     resolved["rollout_format_gate"].setdefault("sample_count", resolved["rollout"]["sample_count"])
@@ -327,6 +332,7 @@ def _run_trl_grpo(config, examples, output_dir):
         processing_class=tokenizer,
         peft_config=peft_config,
     )
+    _add_trainer_callbacks(trainer, _trainer_callbacks(config))
     result = trainer.train()
     trainer.save_model(str(output_dir))
     return float(result.training_loss), trainer.state.log_history, trainer.model, tokenizer
@@ -367,6 +373,49 @@ def _load_policy_model_and_tokenizer(config, move_to_accelerator=False):
     if move_to_accelerator:
         model = _move_model_to_accelerator(model)
     return model, tokenizer, peft_config
+
+
+def _trainer_callbacks(config):
+    if not bool(config["training"].get("frac_reward_zero_std_early_stop")):
+        return None
+    try:
+        from transformers import TrainerCallback
+    except ImportError as exc:
+        raise RuntimeError("transformers is required for GRPO early-stop callbacks") from exc
+
+    threshold = float(config["training"]["frac_reward_zero_std_threshold"])
+    patience = int(config["training"]["frac_reward_zero_std_patience"])
+
+    class FracRewardZeroStdEarlyStopCallback(TrainerCallback):
+        def __init__(self):
+            self.consecutive_bad_steps = 0
+
+        def on_log(self, args, state, control, logs=None, **kwargs):
+            del args, state, kwargs
+            if not logs or "frac_reward_zero_std" not in logs:
+                return control
+            value = float(logs["frac_reward_zero_std"])
+            if value > threshold:
+                self.consecutive_bad_steps += 1
+            else:
+                self.consecutive_bad_steps = 0
+            if self.consecutive_bad_steps >= patience:
+                control.should_training_stop = True
+            return control
+
+    return [FracRewardZeroStdEarlyStopCallback()]
+
+
+def _add_trainer_callbacks(trainer, callbacks):
+    if not callbacks:
+        return
+    for callback in callbacks:
+        if hasattr(trainer, "add_callback"):
+            trainer.add_callback(callback)
+        elif hasattr(trainer, "callback_handler"):
+            trainer.callback_handler.add_callback(callback)
+        else:
+            raise RuntimeError("trainer does not support callbacks")
 
 
 def _move_model_to_accelerator(model):
@@ -556,6 +605,7 @@ def _to_grpo_rows(examples):
 def _write_sample_rollouts(path, config, examples, dry_run, model=None, tokenizer=None):
     rows = []
     sample_count = min(int(config["rollout"]["sample_count"]), len(examples))
+    generations_per_prompt = int(config["rollout"].get("sample_rollout_generations", 1))
     selected = examples[:sample_count]
     if not dry_run and hasattr(model, "eval"):
         model.eval()
@@ -563,30 +613,59 @@ def _write_sample_rollouts(path, config, examples, dry_run, model=None, tokenize
     for index, example in enumerate(selected):
         prompt = _prompt_text(example["prompt"])
         answer = example["verifier"]["answer"]
-        if dry_run:
-            generation = rf"\boxed{{{answer}}}"
-        else:
-            generation = _generate_text(model, tokenizer, prompt, config)
-        reward_result = score_math_boxed_v001(generation, answer, config=MathRewardConfig())
+        completion_records = []
+        for generation_index in range(generations_per_prompt):
+            if dry_run:
+                generation = rf"\boxed{{{answer}}}"
+            else:
+                generation = _generate_text(
+                    model,
+                    tokenizer,
+                    prompt,
+                    config,
+                    sample=generations_per_prompt > 1,
+                )
+            reward_result = score_math_boxed_v001(generation, answer, config=MathRewardConfig())
+            completion_records.append(
+                {
+                    "generation_index": generation_index,
+                    "completion": generation,
+                    "reward": reward_result.score,
+                    "parsed_answer": reward_result.normalized_prediction,
+                    "failure_reason": None if reward_result.score == 1.0 else reward_result.reason,
+                    "parse_failure": reward_result.reason in PARSE_FAILURE_REASONS,
+                    "completion_length": len(generation),
+                }
+            )
+        first = completion_records[0]
+        rewards = [record["reward"] for record in completion_records]
+        parse_failures = [record["parse_failure"] for record in completion_records]
+        completion_lengths = [record["completion_length"] for record in completion_records]
         rows.append(
             {
                 "id": example["id"],
                 "sample_index": index,
                 "prompt": prompt,
                 "answer": answer,
-                "completion": generation,
-                "reward": reward_result.score,
-                "parsed_answer": reward_result.normalized_prediction,
-                "failure_reason": None if reward_result.score == 1.0 else reward_result.reason,
-                "parse_failure": reward_result.reason in PARSE_FAILURE_REASONS,
-                "completion_length": len(generation),
+                "completion": first["completion"],
+                "reward": first["reward"],
+                "parsed_answer": first["parsed_answer"],
+                "failure_reason": first["failure_reason"],
+                "parse_failure": any(parse_failures),
+                "completion_length": sum(completion_lengths) / len(completion_lengths),
+                "reward_vector": rewards,
+                "parsed_answers": [record["parsed_answer"] for record in completion_records],
+                "failure_reasons": [record["failure_reason"] for record in completion_records],
+                "parse_failure_vector": parse_failures,
+                "completion_lengths": completion_lengths,
+                "completion_records": completion_records,
             }
         )
     _write_jsonl(path, rows)
     return rows
 
 
-def _generate_text(model, tokenizer, prompt, config):
+def _generate_text(model, tokenizer, prompt, config, sample=False):
     try:
         import torch
     except ImportError:
@@ -600,10 +679,16 @@ def _generate_text(model, tokenizer, prompt, config):
 
     generation_kwargs = {
         "max_new_tokens": int(config["rollout"]["max_completion_length"]),
-        "do_sample": False,
+        "do_sample": bool(sample),
         "pad_token_id": tokenizer.pad_token_id,
         "eos_token_id": tokenizer.eos_token_id,
     }
+    if sample:
+        generation_kwargs["temperature"] = float(config["rollout"]["temperature"])
+        generation_kwargs["top_p"] = float(config["rollout"]["top_p"])
+        top_k = int(config["rollout"]["top_k"])
+        if top_k > 0:
+            generation_kwargs["top_k"] = top_k
     if torch is None:
         outputs = model.generate(**inputs, **generation_kwargs)
     else:
@@ -633,16 +718,69 @@ def _summarize_samples(sample_rows):
             "perfect_reward_rate": None,
             "parse_failure_rate": None,
             "avg_completion_length": None,
+            "frac_reward_zero_std": None,
+            "effective_mixed_group_rate": None,
         }
-    rewards = [row["reward"] for row in sample_rows]
+    rewards = _flatten_values(sample_rows, "reward_vector", "reward")
+    parse_failures = _flatten_values(sample_rows, "parse_failure_vector", "parse_failure")
+    lengths = _flatten_values(sample_rows, "completion_lengths", "completion_length")
+    group_reward_stds = [
+        statistics.pstdev(row["reward_vector"]) if "reward_vector" in row else 0.0
+        for row in sample_rows
+    ]
     return {
         "reward_mean": sum(rewards) / len(rewards),
         "reward_std": statistics.pstdev(rewards),
         "zero_reward_rate": sum(1 for reward in rewards if reward == 0.0) / len(rewards),
         "perfect_reward_rate": sum(1 for reward in rewards if reward == 1.0) / len(rewards),
-        "parse_failure_rate": sum(1 for row in sample_rows if row["parse_failure"]) / len(sample_rows),
-        "avg_completion_length": sum(row["completion_length"] for row in sample_rows) / len(sample_rows),
+        "parse_failure_rate": sum(1 for value in parse_failures if value) / len(parse_failures),
+        "avg_completion_length": sum(lengths) / len(lengths),
+        "frac_reward_zero_std": sum(1 for value in group_reward_stds if value == 0.0) / len(group_reward_stds),
+        "effective_mixed_group_rate": sum(1 for value in group_reward_stds if value > 0.0) / len(group_reward_stds),
     }
+
+
+def _summarize_trainer_signal(trainer_log):
+    steps = [row for row in trainer_log if isinstance(row, dict) and "frac_reward_zero_std" in row]
+    if not steps:
+        return {}
+
+    frac_zero_values = [float(row["frac_reward_zero_std"]) for row in steps]
+    reward_values = [float(row["reward"]) for row in steps if "reward" in row]
+    reward_std_values = [float(row["reward_std"]) for row in steps if "reward_std" in row]
+    grad_norm_values = [float(row["grad_norm"]) for row in steps if "grad_norm" in row]
+    completion_lengths = [
+        float(row["completions/mean_length"])
+        for row in steps
+        if "completions/mean_length" in row
+    ]
+    signal = {
+        "frac_reward_zero_std": sum(frac_zero_values) / len(frac_zero_values),
+        "effective_mixed_group_rate": sum(1 for value in frac_zero_values if value < 1.0) / len(frac_zero_values),
+        "trainer_logged_steps": len(steps),
+        "nonzero_grad_step_rate": (
+            sum(1 for value in grad_norm_values if value > 0.0) / len(grad_norm_values)
+            if grad_norm_values
+            else None
+        ),
+    }
+    if reward_values:
+        signal["reward_mean"] = sum(reward_values) / len(reward_values)
+    if reward_std_values:
+        signal["reward_std"] = sum(reward_std_values) / len(reward_std_values)
+    if completion_lengths:
+        signal["avg_completion_length"] = sum(completion_lengths) / len(completion_lengths)
+    return signal
+
+
+def _flatten_values(rows, vector_key, scalar_key):
+    values = []
+    for row in rows:
+        if vector_key in row:
+            values.extend(row[vector_key])
+        else:
+            values.append(row[scalar_key])
+    return values
 
 
 def _write_synthetic_rlvr_jsonl(path, train_count, problem_style="addition"):
@@ -755,6 +893,9 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- final loss: `{final_loss}`",
         f"- reward mean: `{metrics['reward_mean']}`",
         f"- reward std: `{metrics['reward_std']}`",
+        f"- frac reward zero std: `{metrics.get('frac_reward_zero_std')}`",
+        f"- effective mixed group rate: `{metrics.get('effective_mixed_group_rate')}`",
+        f"- nonzero grad step rate: `{metrics.get('nonzero_grad_step_rate')}`",
         f"- zero reward rate: `{metrics['zero_reward_rate']}`",
         f"- perfect reward rate: `{metrics['perfect_reward_rate']}`",
         f"- parse failure rate: `{metrics['parse_failure_rate']}`",
@@ -770,10 +911,14 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- train examples: `{resolved['selection']['max_train_examples']}`",
         f"- max steps: `{resolved['training']['max_steps']}`",
         f"- num generations: `{resolved['rollout']['num_generations']}`",
+        f"- sample rollout generations: `{resolved['rollout'].get('sample_rollout_generations')}`",
         f"- max completion length: `{resolved['rollout']['max_completion_length']}`",
         f"- temperature: `{resolved['rollout']['temperature']}`",
         f"- top_p: `{resolved['rollout']['top_p']}`",
         f"- beta: `{resolved['rollout']['beta']}`",
+        f"- frac reward zero std early stop: `{resolved['training'].get('frac_reward_zero_std_early_stop')}`",
+        f"- frac reward zero std threshold: `{resolved['training'].get('frac_reward_zero_std_threshold')}`",
+        f"- frac reward zero std patience: `{resolved['training'].get('frac_reward_zero_std_patience')}`",
         f"- eval after train enabled: `{resolved['eval_after_train']['enabled']}`",
     ]
     if eval_outputs:
