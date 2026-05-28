@@ -1,0 +1,23 @@
+run_name: gsm8k_qwen3_4b_prompt_sweep
+input_path: data/rlvr_prompts/gsm8k_train.jsonl
+output_dir: runs/audit/gsm8k_qwen3_4b_prompt_sweep
+model_name_or_path: Qwen/Qwen3-4B
+seed: 20260528
+sample_size: 300
+split: train
+num_generations: 8
+temperature: 0.9
+top_p: 0.95
+top_k: 0
+torch_dtype: bfloat16
+trust_remote_code: false
+variant_order: [current_128, strong_128, strong_512, strong_1024, strong_nonthinking_512, strong_thinking_1024]
+strong_prompt_template: 'Solve the problem. You may reason briefly. The final line must contain exactly one boxed numeric answer and nothing after it. Final line format: \boxed{NUMBER}. Do not put units, words, commas, or extra boxed answers after the final boxed answer. Problem: {question}'
+
+# Variants implemented by runs/audit/gsm8k_qwen3_4b_prompt_sweep/run_prompt_sweep.py:
+# current_128: current converted GSM8K prompt, max_new_tokens=128, enable_thinking=false
+# strong_128: stronger boxed prompt, max_new_tokens=128, default tokenizer thinking setting
+# strong_512: stronger boxed prompt, max_new_tokens=512, default tokenizer thinking setting
+# strong_1024: stronger boxed prompt, max_new_tokens=1024, default tokenizer thinking setting
+# strong_nonthinking_512: stronger boxed prompt, max_new_tokens=512, enable_thinking=false
+# strong_thinking_1024: stronger boxed prompt, max_new_tokens=1024, enable_thinking=true
