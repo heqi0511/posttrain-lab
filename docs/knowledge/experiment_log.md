@@ -217,3 +217,19 @@ Record training and eval runs here with links to run directories, run cards, res
 - Compared with run `6916959`, average `frac_reward_zero_std` dropped from about `0.84` to `0.0333`, so frontier selection materially improved within-group advantage signal.
 - Sample rollouts contain multiple mixed reward vectors, for example `[1,0,0,1,1,0,0,0]`, `[0,1,0,0,1,1,1,0]`, and `[0,1,0,0,0,0,0,0]`.
 - Heldout eval was not run in this smoke. This result only proves that the frontier-selected GRPO loop now receives a nonzero training signal.
+
+### 2026-05-28 Nexus GSM8K Qwen3-4B Frontier Scout
+
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/5a83769-gsm8k-frontier-audit/`.
+- Data source: official GSM8K train split converted to RLVR JSONL at `data/rlvr_prompts/gsm8k_train.jsonl`; official GSM8K test was not used.
+- Long audit jobs `6922910` and `6922911` were cancelled because the first implementation sampled one completion per `generate()` call and was too slow.
+- Commit `83adafa04fa14379bf531cd60c82e02ecda0d9ee` batched audit generation with `num_return_sequences`, added scout configs, and wrote partial audit outputs every 10-25 prompts.
+- Initial scout jobs `6923245` and `6923246` were cancelled after 20 prompts because the old final-only parser rejected normal reasoning before a final boxed answer.
+- Commit `0a5d68404fa14379bf531cd60c82e02ecda0d9ee` updated `math_boxed_v001` to strip complete `<think>...</think>` blocks, reject unclosed think blocks, allow ordinary reasoning before exactly one visible final `\boxed{...}`, and still reject multiple boxed answers.
+- Reward tests and audit/config tests passed locally and on the server before rerunning the scout.
+- Rerun thinking=false job `6923399` completed in `00:08:22` on RTX A5000 with Qwen/Qwen3-4B, `100` prompts, `8` completions per prompt, temperature `0.9`, top_p `0.95`, and max new tokens `128`.
+- Thinking=false summary: all-zero `36`, all-one `27`, mixed `37`, mixed rate `0.37`, effective mixed group rate `0.37`, parse failure rate `0.55875`, average completion length `317.60`, selected prompts `0`.
+- Filtered frontier output: `runs/rlvr/gsm8k_frontier_scout_thinking_false/frontier_grpo_train.jsonl`; it is empty but schema-valid. All `100` prompts were excluded: `67` parse_fail, `27` all_one, and `6` low_diversity.
+- Thinking=true rerun job `6923400` was stopped after 20 prompts to avoid wasted GPU. Partial summary: all-zero `20`, mixed `0`, parse failure rate `1.0`, caused by unclosed `<think>` generations under the short token budget.
+- Main diagnosis: the parser fix worked and revealed real mixed reward groups for thinking=false, but the current prompt/model combination still often omits final boxed answers, appends units after boxed answers, or produces too little answer diversity for the strict frontier filter.
+- Recommendation: do not start GRPO from this filtered GSM8K scout yet. First run a short boxed-format SFT warmup or strengthen the prompt/decoding so parse failure drops below the frontier threshold; use thinking=false for now unless thinking=true is given a much larger completion budget and a format gate.
