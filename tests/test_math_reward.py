@@ -50,3 +50,18 @@ def test_malformed_box_before_valid_answer_is_rejected():
 
     assert result.score == 0.0
     assert result.reason == "malformed_boxed_answer"
+
+
+def test_math_boxed_v001_strips_closed_think_blocks_before_parsing():
+    result = score_math_boxed_v001("<think>Try 3. Wrong: \\boxed{3}</think>\n\\boxed{4}", "4")
+
+    assert result.score == 1.0
+    assert result.reason == "exact_match"
+    assert result.normalized_prediction == "4"
+    assert extract_boxed_answers("<think>Wrong: \\boxed{3}</think>\n\\boxed{4}") == ["4"]
+
+
+def test_math_boxed_v001_does_not_accept_unclosed_think_blocks():
+    result = score_math_boxed_v001("<think>Try 4.\n\\boxed{4}", "4")
+
+    assert result.score == 0.0

@@ -117,15 +117,28 @@ Answer parsing:
 
 Pilot frontier audit configs:
 
+- `configs/rlvr/gsm8k_frontier_scout_thinking_false.yaml`
+- `configs/rlvr/gsm8k_frontier_scout_thinking_true.yaml`
 - `configs/rlvr/gsm8k_frontier_audit_thinking_false.yaml`
 - `configs/rlvr/gsm8k_frontier_audit_thinking_true.yaml`
 
-Pilot audit settings:
+Scout audit settings:
+
+- Model: `Qwen/Qwen3-4B`.
+- Prompt count: `100` train prompts.
+- Completions per prompt: `8`.
+- Sampling: temperature `0.9`, top_p `0.95`, max new tokens `128`.
+- Generation batch size: `8` completions per prompt.
+- Audit outputs flush every `10` prompts so interrupted jobs still expose partial summaries.
+
+Full pilot audit settings:
 
 - Model: `Qwen/Qwen3-4B`.
 - Prompt count: `300` train prompts.
 - Completions per prompt: `16`.
 - Sampling: temperature `0.9`, top_p `0.95`.
+- Generation batch size: `8` completions per prompt.
+- Audit outputs flush every `25` prompts.
 - Frontier filter: `0.2 <= reward_mean <= 0.8`, `parse_failure_rate <= 0.2`, `unique_answer_count >= 3`.
 - The audit is inference-only and must not execute trainer steps.
 

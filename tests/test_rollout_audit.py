@@ -81,7 +81,10 @@ def test_rollout_audit_writes_frontier_artifacts_without_training(tmp_path):
 
     assert summary["no_training_executed"] is True
     assert summary["audited_prompt_count"] == 10
+    assert summary["target_prompt_count"] == 10
+    assert summary["completed"] is True
     assert summary["completions_per_prompt"] == 16
+    assert summary["generation_batch_size"] == 8
     assert summary["bucket_counts"] == {"all_zero": 4, "all_one": 2, "mixed": 4}
     assert summary["all_zero_count"] == 4
     assert summary["all_one_count"] == 2

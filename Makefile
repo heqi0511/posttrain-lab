@@ -1,4 +1,4 @@
-.PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit rlvr-small compare-runs e2e-smoke
+.PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit rlvr-small compare-runs e2e-smoke
 PYTHON ?= python3
 
 format:
@@ -57,6 +57,14 @@ rlvr-frontier-smoke: rlvr-frontier-audit
 
 gsm8k-rlvr-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.gsm8k --output data/rlvr_prompts/gsm8k_train.jsonl --summary data/rlvr_prompts/gsm8k_train_summary.json
+
+rlvr-gsm8k-scout-thinking-false: gsm8k-rlvr-data
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/gsm8k_frontier_scout_thinking_false.yaml
+
+rlvr-gsm8k-scout-thinking-true: gsm8k-rlvr-data
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/gsm8k_frontier_scout_thinking_true.yaml
+
+rlvr-gsm8k-scout: rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true
 
 rlvr-gsm8k-audit-thinking-false: gsm8k-rlvr-data
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/gsm8k_frontier_audit_thinking_false.yaml

@@ -7,6 +7,7 @@ import csv
 import json
 import random
 import statistics
+import time
 from pathlib import Path
 
 from posttrain_lab.data.validate import validate_jsonl
@@ -78,6 +79,7 @@ def run_rollout_audit(config, config_path=None):
         review_rows = []
         kept_records = []
         excluded_rows = []
+        started_at = time.time()
 
         for prompt_index, example in enumerate(examples):
             rollouts = _audit_prompt(
@@ -109,19 +111,37 @@ def run_rollout_audit(config, config_path=None):
             if prompt_index < int(resolved["review"]["max_prompts"]):
                 review_rows.extend(rollouts)
 
-        _write_prompt_csv(output_dir / "rollout_audit_by_prompt.csv", prompt_reports)
-        _write_jsonl(output_dir / "sample_rollouts_for_review.jsonl", review_rows)
-        _write_jsonl(filtered_output_path, kept_records)
-        _write_jsonl(excluded_output_path, excluded_rows)
+            flush_every = int(resolved["audit"]["flush_every_prompts"])
+            if flush_every > 0 and (prompt_index + 1) % flush_every == 0:
+                _write_audit_outputs(
+                    output_dir=output_dir,
+                    filtered_output_path=filtered_output_path,
+                    excluded_output_path=excluded_output_path,
+                    prompt_reports=prompt_reports,
+                    review_rows=review_rows,
+                    kept_records=kept_records,
+                    excluded_rows=excluded_rows,
+                    config=resolved,
+                    config_path=config_path,
+                    target_prompt_count=len(examples),
+                    completed=False,
+                    started_at=started_at,
+                )
 
-        summary = _summary(
-            prompt_reports=prompt_reports,
-            config=resolved,
+        summary = _write_audit_outputs(
+            output_dir=output_dir,
             filtered_output_path=filtered_output_path,
             excluded_output_path=excluded_output_path,
+            prompt_reports=prompt_reports,
+            review_rows=review_rows,
+            kept_records=kept_records,
+            excluded_rows=excluded_rows,
+            config=resolved,
             config_path=config_path,
+            target_prompt_count=len(examples),
+            completed=True,
+            started_at=started_at,
         )
-        _write_text(output_dir / "rollout_audit_summary.json", json.dumps(summary, indent=2, sort_keys=True) + "\n")
         return summary
     finally:
         if model is not None:
@@ -162,17 +182,22 @@ def _resolve_config(config):
     resolved["rollout"].setdefault("temperature", 0.7)
     resolved["rollout"].setdefault("top_p", 0.95)
     resolved["rollout"].setdefault("top_k", 0)
+    resolved["rollout"].setdefault("batch_size", min(8, int(resolved["rollout"]["completions_per_prompt"])))
     resolved["frontier"].setdefault("min_reward_mean", 0.2)
     resolved["frontier"].setdefault("max_reward_mean", 0.8)
     resolved["frontier"].setdefault("max_parse_failure_rate", 0.5)
     resolved["frontier"].setdefault("min_unique_answer_count", 3)
     resolved.setdefault("review", {})
     resolved["review"].setdefault("max_prompts", min(20, int(resolved["selection"]["max_prompts"])))
+    resolved.setdefault("audit", {})
+    resolved["audit"].setdefault("flush_every_prompts", 25)
 
     if resolved["reward_version"] != "math_boxed_v001":
         raise ValueError(f"unsupported reward_version: {resolved['reward_version']}")
     if int(resolved["rollout"]["completions_per_prompt"]) < 2:
         raise ValueError("rollout.completions_per_prompt must be >= 2")
+    if int(resolved["rollout"]["batch_size"]) < 1:
+        raise ValueError("rollout.batch_size must be >= 1")
     return resolved
 
 
@@ -199,11 +224,11 @@ def _audit_prompt(example, prompt_index, config, model=None, tokenizer=None):
     answer = example["verifier"]["answer"]
     rows = []
     count = int(config["rollout"]["completions_per_prompt"])
-    for sample_index in range(count):
-        if config["dry_run"]:
-            completion = _mock_completion(answer, prompt_index, sample_index)
-        else:
-            completion = _sample_completion(model, tokenizer, prompt, config)
+    if config["dry_run"]:
+        completions = [_mock_completion(answer, prompt_index, sample_index) for sample_index in range(count)]
+    else:
+        completions = _sample_completions(model, tokenizer, prompt, config, count)
+    for sample_index, completion in enumerate(completions):
         reward_result = score_math_boxed_v001(completion, answer, config=MathRewardConfig())
         rows.append(
             {
@@ -246,7 +271,7 @@ def _wrong_answer(answer, sample_index):
     return f"{answer}_wrong_{sample_index}"
 
 
-def _sample_completion(model, tokenizer, prompt, config):
+def _sample_completions(model, tokenizer, prompt, config, count):
     try:
         import torch
     except ImportError as exc:
@@ -259,25 +284,32 @@ def _sample_completion(model, tokenizer, prompt, config):
         inputs = {key: value.to(device) for key, value in inputs.items()}
 
     temperature = float(config["rollout"]["temperature"])
-    generation_kwargs = {
-        "max_new_tokens": int(config["rollout"]["max_new_tokens"]),
-        "do_sample": temperature > 0,
-        "pad_token_id": tokenizer.pad_token_id,
-        "eos_token_id": tokenizer.eos_token_id,
-    }
-    if temperature > 0:
-        generation_kwargs["temperature"] = temperature
-        generation_kwargs["top_p"] = float(config["rollout"]["top_p"])
-        top_k = int(config["rollout"]["top_k"])
-        if top_k > 0:
-            generation_kwargs["top_k"] = top_k
+    completions = []
+    batch_size = int(config["rollout"]["batch_size"])
+    while len(completions) < count:
+        current_batch = min(batch_size, count - len(completions))
+        generation_kwargs = {
+            "max_new_tokens": int(config["rollout"]["max_new_tokens"]),
+            "do_sample": temperature > 0,
+            "num_return_sequences": current_batch,
+            "pad_token_id": tokenizer.pad_token_id,
+            "eos_token_id": tokenizer.eos_token_id,
+        }
+        if temperature > 0:
+            generation_kwargs["temperature"] = temperature
+            generation_kwargs["top_p"] = float(config["rollout"]["top_p"])
+            top_k = int(config["rollout"]["top_k"])
+            if top_k > 0:
+                generation_kwargs["top_k"] = top_k
 
-    with torch.no_grad():
-        outputs = model.generate(**inputs, **generation_kwargs)
+        with torch.no_grad():
+            outputs = model.generate(**inputs, **generation_kwargs)
 
-    prompt_length = inputs["input_ids"].shape[-1]
-    generated = outputs[0][prompt_length:]
-    return tokenizer.decode(generated, skip_special_tokens=True).strip()
+        prompt_length = inputs["input_ids"].shape[-1]
+        for output in outputs:
+            generated = output[prompt_length:]
+            completions.append(tokenizer.decode(generated, skip_special_tokens=True).strip())
+    return completions
 
 
 def _summarize_prompt(example, prompt_index, rollouts):
@@ -329,7 +361,48 @@ def _frontier_decision(report, frontier):
     return True, "", ""
 
 
-def _summary(prompt_reports, config, filtered_output_path, excluded_output_path, config_path):
+def _write_audit_outputs(
+    output_dir,
+    filtered_output_path,
+    excluded_output_path,
+    prompt_reports,
+    review_rows,
+    kept_records,
+    excluded_rows,
+    config,
+    config_path,
+    target_prompt_count,
+    completed,
+    started_at,
+):
+    _write_prompt_csv(output_dir / "rollout_audit_by_prompt.csv", prompt_reports)
+    _write_jsonl(output_dir / "sample_rollouts_for_review.jsonl", review_rows)
+    _write_jsonl(filtered_output_path, kept_records)
+    _write_jsonl(excluded_output_path, excluded_rows)
+    summary = _summary(
+        prompt_reports=prompt_reports,
+        config=config,
+        filtered_output_path=filtered_output_path,
+        excluded_output_path=excluded_output_path,
+        config_path=config_path,
+        target_prompt_count=target_prompt_count,
+        completed=completed,
+        elapsed_seconds=time.time() - started_at,
+    )
+    _write_text(output_dir / "rollout_audit_summary.json", json.dumps(summary, indent=2, sort_keys=True) + "\n")
+    return summary
+
+
+def _summary(
+    prompt_reports,
+    config,
+    filtered_output_path,
+    excluded_output_path,
+    config_path,
+    target_prompt_count=None,
+    completed=True,
+    elapsed_seconds=None,
+):
     total = len(prompt_reports)
     bucket_counts = {
         "all_zero": sum(1 for report in prompt_reports if report["bucket"] == "all_zero"),
@@ -352,7 +425,11 @@ def _summary(prompt_reports, config, filtered_output_path, excluded_output_path,
         "adapter_path": config.get("adapter_path"),
         "reward_version": config["reward_version"],
         "audited_prompt_count": total,
+        "target_prompt_count": target_prompt_count if target_prompt_count is not None else total,
+        "completed": completed,
+        "elapsed_seconds": elapsed_seconds,
         "completions_per_prompt": int(config["rollout"]["completions_per_prompt"]),
+        "generation_batch_size": int(config["rollout"]["batch_size"]),
         "all_zero_count": bucket_counts["all_zero"],
         "all_one_count": bucket_counts["all_one"],
         "mixed_count": bucket_counts["mixed"],

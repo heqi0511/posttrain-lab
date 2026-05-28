@@ -1,21 +1,21 @@
 input_path: data/rlvr_prompts/gsm8k_train.jsonl
-output_dir: runs/rlvr/gsm8k_frontier_audit_thinking_false
-filtered_output_path: runs/rlvr/gsm8k_frontier_audit_thinking_false/frontier_grpo_train.jsonl
-excluded_output_path: runs/rlvr/gsm8k_frontier_audit_thinking_false/frontier_excluded.jsonl
+output_dir: runs/rlvr/gsm8k_frontier_scout_thinking_false
+filtered_output_path: runs/rlvr/gsm8k_frontier_scout_thinking_false/frontier_grpo_train.jsonl
+excluded_output_path: runs/rlvr/gsm8k_frontier_scout_thinking_false/frontier_excluded.jsonl
 dry_run: false
 model_name_or_path: Qwen/Qwen3-4B
 adapter_path: null
-seed: 41
+seed: 51
 torch_dtype: bfloat16
 trust_remote_code: false
 enable_thinking: false
 reward_version: math_boxed_v001
 selection:
   split: train
-  max_prompts: 300
+  max_prompts: 100
 rollout:
-  completions_per_prompt: 16
-  max_new_tokens: 384
+  completions_per_prompt: 8
+  max_new_tokens: 128
   temperature: 0.9
   top_p: 0.95
   top_k: 0
@@ -26,9 +26,9 @@ frontier:
   max_parse_failure_rate: 0.2
   min_unique_answer_count: 3
 review:
-  max_prompts: 30
+  max_prompts: 20
 audit:
-  flush_every_prompts: 25
+  flush_every_prompts: 10
 peft:
   method: lora
   r: 8

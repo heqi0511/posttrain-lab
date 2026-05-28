@@ -19,6 +19,7 @@ rollout:
   temperature: 0.9
   top_p: 0.95
   top_k: 0
+  batch_size: 8
 frontier:
   min_reward_mean: 0.2
   max_reward_mean: 0.8
@@ -26,6 +27,8 @@ frontier:
   min_unique_answer_count: 3
 review:
   max_prompts: 30
+audit:
+  flush_every_prompts: 25
 peft:
   method: lora
   r: 8

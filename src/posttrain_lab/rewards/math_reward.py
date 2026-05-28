@@ -73,7 +73,8 @@ def score_math_boxed(completion: str, expected_answer: str, symbolic: bool = Fal
     repeated identical boxed answers.
     """
 
-    boxed_answers, malformed = _extract_boxed_answers_with_status(completion)
+    scored_completion = _strip_think_blocks(completion)
+    boxed_answers, malformed = _extract_boxed_answers_with_status(scored_completion)
     if malformed:
         return RewardResult(0.0, None, "malformed_boxed_answer")
     if not boxed_answers:
@@ -110,7 +111,8 @@ def score_math_boxed_v001(
     if len(answer) > config.max_answer_chars:
         return MathRewardResult(score=0.0, reason="answer_too_long")
 
-    boxed_answers, malformed = _extract_boxed_answers_with_status(completion)
+    scored_completion = _strip_think_blocks(completion)
+    boxed_answers, malformed = _extract_boxed_answers_with_status(scored_completion)
     if malformed:
         return MathRewardResult(score=0.0, reason="malformed_boxed_answer")
     if not boxed_answers:
@@ -120,7 +122,7 @@ def score_math_boxed_v001(
         if len(set(normalized_boxes)) > 1:
             return MathRewardResult(score=0.0, reason="conflicting_boxed_answers")
         return MathRewardResult(score=0.0, reason="multiple_boxed_answers")
-    if not _boxed_is_final_only(completion):
+    if not _boxed_is_final_only(scored_completion):
         return MathRewardResult(score=0.0, reason="boxed_not_final_only")
 
     normalized_boxes = [normalize_math_answer(value) for value in boxed_answers]
@@ -161,7 +163,7 @@ def score_math_boxed_v001(
 def extract_boxed_answers(text: str) -> List[str]:
     """Extract well-formed boxed answer payloads."""
 
-    answers, _ = _extract_boxed_answers_with_status(text)
+    answers, _ = _extract_boxed_answers_with_status(_strip_think_blocks(text))
     return answers
 
 
@@ -223,6 +225,10 @@ def _extract_boxed_answers_with_status(text: str) -> Tuple[List[str], bool]:
         start = index + 1
 
     return answers, malformed
+
+
+def _strip_think_blocks(text: str) -> str:
+    return re.sub(r"<think\b[^>]*>.*?</think>", "", text, flags=re.IGNORECASE | re.DOTALL)
 
 
 def _boxed_is_final_only(text: str) -> bool:

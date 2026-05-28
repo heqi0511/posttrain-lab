@@ -32,6 +32,8 @@ Repeated identical boxed answers are rejected to remove parser ambiguity and red
 
 ### Parser Behavior
 
+Before boxed-answer extraction, the parser removes complete `<think>...</think>` blocks and then applies the same final-only boxed-answer check to the remaining visible completion. Unclosed thinking blocks are not removed and do not get special treatment.
+
 Normalization removes whitespace and simple LaTeX noise, including `\left`, `\right`, math delimiters, and simple `\frac{a}{b}` / `\frac12` forms. Exact normalized string match is checked first.
 
 If `allow_symbolic_equivalence=True`, the reward can also compare simple numeric arithmetic expressions such as `1/2` and `0.5`. This path is local and bounded: it rejects long expressions, unsupported characters, large ASTs, large fractions, division by zero, and large exponents.
@@ -44,6 +46,7 @@ If `allow_symbolic_equivalence=True`, the reward can also compare simple numeric
 - A model may place the correct boxed answer in a negated sentence or candidate answer while giving a wrong unboxed final answer. The final-only boxed format check scores this `0.0`.
 - A model may exploit malformed LaTeX or parser ambiguity. Malformed boxed syntax scores `0.0`.
 - A model may output extremely long text before a boxed answer. Length above `max_output_chars` scores `0.0`.
+- A model may hide contradictory boxed answers inside closed `<think>...</think>` blocks. Those blocks are stripped before scoring, so only the visible final answer is rewarded; RLVR logs should still track completion length.
 
 ### Fixtures And Tests
 
@@ -51,4 +54,4 @@ If `allow_symbolic_equivalence=True`, the reward can also compare simple numeric
 - Test file: `tests/test_math_reward.py`
 - Command: `make test-rewards`
 
-The adversarial fixtures cover multiple boxed answers, repeated identical boxed answers, correct boxed answers embedded in reasoning or negation, correct boxed candidate with wrong final answer, malformed LaTeX, long output, prompt-injection text, and symbolic equivalence being disabled by default.
+The adversarial fixtures cover multiple boxed answers, repeated identical boxed answers, correct boxed answers embedded in reasoning or negation, correct boxed candidate with wrong final answer, malformed LaTeX, long output, prompt-injection text, closed and unclosed thinking blocks, and symbolic equivalence being disabled by default.
