@@ -169,6 +169,12 @@ def _resolve_config(config):
     resolved.setdefault("trust_remote_code", False)
     resolved.setdefault("enable_thinking", False)
     resolved.setdefault("reward_version", "math_boxed_v001")
+    resolved.setdefault("reward", {})
+    resolved["reward"].setdefault("allow_symbolic_equivalence", False)
+    resolved["reward"].setdefault("symbolic_equivalence_engine", "fraction")
+    resolved["reward"].setdefault("max_symbolic_expr_chars", 120)
+    resolved["reward"].setdefault("max_symbolic_ast_nodes", 64)
+    resolved["reward"].setdefault("max_symbolic_collection_size", 32)
     resolved.setdefault("peft", {})
     resolved["peft"].setdefault("method", "lora")
     resolved["peft"].setdefault("r", 4)
@@ -229,7 +235,17 @@ def _audit_prompt(example, prompt_index, config, model=None, tokenizer=None):
     else:
         completions = _sample_completions(model, tokenizer, prompt, config, count)
     for sample_index, completion in enumerate(completions):
-        reward_result = score_math_boxed_v001(completion, answer, config=MathRewardConfig())
+        reward_result = score_math_boxed_v001(
+            completion,
+            answer,
+            config=MathRewardConfig(
+                allow_symbolic_equivalence=bool(config["reward"]["allow_symbolic_equivalence"]),
+                symbolic_equivalence_engine=str(config["reward"]["symbolic_equivalence_engine"]),
+                max_symbolic_expr_chars=int(config["reward"]["max_symbolic_expr_chars"]),
+                max_symbolic_ast_nodes=int(config["reward"]["max_symbolic_ast_nodes"]),
+                max_symbolic_collection_size=int(config["reward"]["max_symbolic_collection_size"]),
+            ),
+        )
         rows.append(
             {
                 "id": example["id"],
@@ -424,6 +440,7 @@ def _summary(
         "model_name_or_path": config["model_name_or_path"],
         "adapter_path": config.get("adapter_path"),
         "reward_version": config["reward_version"],
+        "reward": config["reward"],
         "audited_prompt_count": total,
         "target_prompt_count": target_prompt_count if target_prompt_count is not None else total,
         "completed": completed,

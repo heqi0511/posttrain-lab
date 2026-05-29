@@ -45,6 +45,9 @@ def write_config(path, input_path, output_dir, filtered_path, excluded_path):
                 "trust_remote_code: false",
                 "enable_thinking: false",
                 "reward_version: math_boxed_v001",
+                "reward:",
+                "  allow_symbolic_equivalence: true",
+                "  symbolic_equivalence_engine: sympy",
                 "selection:",
                 "  split: train",
                 "  max_prompts: 10",
@@ -112,6 +115,8 @@ def test_rollout_audit_writes_frontier_artifacts_without_training(tmp_path):
 
     report = json.loads((output_dir / "rollout_audit_summary.json").read_text(encoding="utf-8"))
     assert report["effective_mixed_group_rate"] == 0.4
+    assert report["reward"]["allow_symbolic_equivalence"] is True
+    assert report["reward"]["symbolic_equivalence_engine"] == "sympy"
 
     with (output_dir / "rollout_audit_by_prompt.csv").open("r", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
