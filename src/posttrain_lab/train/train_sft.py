@@ -229,6 +229,7 @@ def _resolve_config(config):
     resolved.setdefault("torch_dtype", "auto")
     resolved.setdefault("trust_remote_code", False)
     resolved.setdefault("attn_implementation", None)
+    resolved.setdefault("parent_adapter_path", None)
     resolved["generation_check"].setdefault("max_new_tokens", 32)
     resolved["generation_check"].setdefault("enable_thinking", None)
     resolved["generation_check"].setdefault("prompts", [])
@@ -269,6 +270,7 @@ def _resolve_config(config):
     resolved["dataset"].setdefault("shuffle", True)
     resolved["dataset"].setdefault("streaming", False)
     resolved["dataset"].setdefault("shuffle_buffer_size", 10000)
+    resolved["dataset"].setdefault("target_format", "messages")
     if resolved["run_name"] == "sft-overfit32" and resolved["selection"]["max_train_examples"] != 32:
         raise ValueError("overfit-32 requires selection.max_train_examples == 32")
     return resolved
@@ -295,7 +297,7 @@ def write_cli_dry_run_plan(config_path, output_dir=None, mode="training"):
 def _run_trl_training(config, train_examples, validation_examples, output_dir):
     try:
         from datasets import Dataset
-        from peft import LoraConfig, prepare_model_for_kbit_training
+        from peft import LoraConfig, PeftModel, prepare_model_for_kbit_training
         from transformers import AutoModelForCausalLM, AutoTokenizer
         from trl import SFTConfig, SFTTrainer
     except ImportError as exc:
@@ -327,15 +329,19 @@ def _run_trl_training(config, train_examples, validation_examples, output_dir):
     if config["peft"]["qlora"]:
         model = prepare_model_for_kbit_training(model)
 
-    target_modules = config["peft"].get("target_modules") or None
-    peft_config = LoraConfig(
-        r=int(config["peft"]["r"]),
-        lora_alpha=int(config["peft"]["lora_alpha"]),
-        lora_dropout=float(config["peft"]["lora_dropout"]),
-        bias="none",
-        task_type="CAUSAL_LM",
-        target_modules=target_modules,
-    )
+    peft_config = None
+    if config.get("parent_adapter_path"):
+        model = PeftModel.from_pretrained(model, config["parent_adapter_path"], is_trainable=True)
+    else:
+        target_modules = config["peft"].get("target_modules") or None
+        peft_config = LoraConfig(
+            r=int(config["peft"]["r"]),
+            lora_alpha=int(config["peft"]["lora_alpha"]),
+            lora_dropout=float(config["peft"]["lora_dropout"]),
+            bias="none",
+            task_type="CAUSAL_LM",
+            target_modules=target_modules,
+        )
     train_dataset = Dataset.from_list(
         [{"text": _messages_to_text(example["messages"], tokenizer)} for example in train_examples]
     )
@@ -365,14 +371,16 @@ def _run_trl_training(config, train_examples, validation_examples, output_dir):
         max_length=int(config["training"]["max_seq_length"]),
         packing=False,
     )
-    trainer = SFTTrainer(
-        model=model,
-        processing_class=tokenizer,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset if validation_examples else None,
-        args=args,
-        peft_config=peft_config,
-    )
+    trainer_kwargs = {
+        "model": model,
+        "processing_class": tokenizer,
+        "train_dataset": train_dataset,
+        "eval_dataset": eval_dataset if validation_examples else None,
+        "args": args,
+    }
+    if peft_config is not None:
+        trainer_kwargs["peft_config"] = peft_config
+    trainer = SFTTrainer(**trainer_kwargs)
     result = trainer.train()
     trainer.save_model(str(output_dir))
 
@@ -561,6 +569,7 @@ def _write_hf_sft_jsonl(path, config):
                 "shuffle": bool(dataset_config["shuffle"]),
                 "streaming": bool(dataset_config["streaming"]),
                 "shuffle_buffer_size": int(dataset_config["shuffle_buffer_size"]),
+                "target_format": dataset_config["target_format"],
                 "train_examples": int(config["selection"]["max_train_examples"]),
                 "validation_examples": int(config["selection"]["max_validation_examples"]),
                 "skipped_records": skipped,
@@ -578,11 +587,25 @@ def _convert_hf_sft_record(record, dataset_config, split, row_index, source_inde
     if not messages or not any(message["role"] == "assistant" for message in messages):
         return None
 
+    target_format = dataset_config.get("target_format", "messages")
+    if target_format == "messages":
+        converted_messages = messages
+    elif target_format == "boxed_final_only":
+        answer = _final_boxed_answer_from_example({"messages": messages})
+        if not answer:
+            return None
+        prompt_messages = [message for message in messages if message["role"] != "assistant"]
+        if not any(message["role"] == "user" for message in prompt_messages):
+            return None
+        converted_messages = prompt_messages + [{"role": "assistant", "content": rf"\boxed{{{answer}}}"}]
+    else:
+        raise ValueError(f"unsupported dataset.target_format: {target_format}")
+
     source = record.get(dataset_config["source_field"]) or dataset_config["id"]
     return {
         "id": f"openr1-{dataset_config['config'] or 'default'}-{split}-{row_index:06d}",
         "split": split,
-        "messages": messages,
+        "messages": converted_messages,
         "metadata": {
             "source": str(source),
             "domain": str(dataset_config["domain"]),
@@ -858,6 +881,7 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- smoke run: `{resolved['smoke_run']}`",
         f"- finality: `{finality}`",
         f"- base model: `{resolved['model_name_or_path']}`",
+        f"- parent adapter path: `{resolved['parent_adapter_path']}`",
         f"- data path: `{resolved['data_path']}`",
         f"- data hash: `{data_hash}`",
         f"- config hash: `{config_hash}`",
@@ -893,6 +917,7 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
                 f"- source dataset: `{resolved['dataset']['id']}`",
                 f"- source dataset config: `{resolved['dataset']['config']}`",
                 f"- source dataset split: `{resolved['dataset']['split']}`",
+                f"- source dataset target format: `{resolved['dataset']['target_format']}`",
                 f"- dataset shuffle seed: `{resolved['seed']}`",
             ]
         )

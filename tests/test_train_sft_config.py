@@ -195,6 +195,25 @@ def test_openr1_long_config_uses_reasoning_lengths_and_validation_eval():
     assert config["eval_after_train"]["format_regex"] is None
 
 
+def test_openr1_format_repair_config_uses_short_boxed_targets_and_parent_adapter():
+    config = load_config("configs/sft/openr1_math_format_repair_1k.yaml")
+
+    assert config["run_name"] == "sft-openr1-math-format-repair-1k"
+    assert config["parent_adapter_path"].endswith("/runs/sft/openr1_math_1k_len8192/checkpoint-1000")
+    assert config["dataset"]["target_format"] == "boxed_final_only"
+    assert config["training"]["max_seq_length"] == 2048
+    assert config["training"]["max_steps"] == 500
+    assert config["generation_check"]["max_new_tokens"] == 256
+    assert config["generation_check"]["enable_thinking"] is False
+    assert config["eval_after_train"]["prompt_source"] == "validation"
+    assert config["eval_after_train"]["sample_size"] == 16
+    assert config["eval_after_train"]["max_new_tokens"] == 256
+    assert config["eval_after_train"]["enable_thinking"] is False
+    assert config["eval_after_train"]["boxed_math_match"] is True
+    assert config["eval_after_train"]["exact_match"] is False
+    assert config["eval_after_train"]["format_regex"] is None
+
+
 def test_validation_eval_prompt_writer_extracts_final_boxed_answers(tmp_path):
     examples = [
         {
@@ -274,3 +293,35 @@ def test_hf_message_normalization_and_openr1_conversion():
     assert converted["split"] == "train"
     assert converted["messages"][1]["role"] == "assistant"
     assert converted["metadata"]["source"] == "open-r1/OpenR1-Math-220k"
+
+
+def test_openr1_conversion_can_rewrite_reasoning_target_to_final_boxed_only():
+    record = {
+        "messages": [
+            {"role": "system", "content": "You are a math tutor."},
+            {"role": "user", "content": "Solve 19 + 23."},
+            {
+                "role": "assistant",
+                "content": "<think>Do not train on this boxed scratch: \\boxed{41}</think>\nFinal answer: \\boxed{42}",
+            },
+        ],
+        "source": "open-r1/OpenR1-Math-220k",
+    }
+    dataset_config = {
+        "id": "open-r1/Mixture-of-Thoughts",
+        "config": "math",
+        "messages_field": "messages",
+        "source_field": "source",
+        "domain": "math",
+        "difficulty": "mixed",
+        "license": "source-dataset-card",
+        "target_format": "boxed_final_only",
+    }
+
+    converted = _convert_hf_sft_record(record, dataset_config, "train", 0, 7)
+
+    assert converted["messages"] == [
+        {"role": "system", "content": "You are a math tutor."},
+        {"role": "user", "content": "Solve 19 + 23."},
+        {"role": "assistant", "content": r"\boxed{42}"},
+    ]
