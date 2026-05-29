@@ -227,6 +227,39 @@ Validation:
 - `train.jsonl`, `val.jsonl`, and `test.jsonl` pass the strict project SFT JSONL validator.
 - A full parser audit over all `6000` SFT targets produced `0` `latex2sympy2` parse failures on the Nexus environment.
 
+## OpenR1 Level/Domain RLVR Filter
+
+Status: reusable filtering script is available; no filtered dataset is committed by default.
+
+Command:
+
+```bash
+make openr1-level-rlvr-data
+```
+
+Default output:
+
+- `data/rlvr_prompts/openr1_math_l2_l3_alg_nt_v1/train.jsonl`
+- `data/rlvr_prompts/openr1_math_l2_l3_alg_nt_v1/val.jsonl`
+- `data/rlvr_prompts/openr1_math_l2_l3_alg_nt_v1/test.jsonl`
+- `data/rlvr_prompts/openr1_math_l2_l3_alg_nt_v1/manifest.json`
+
+Source and filters:
+
+- Dataset: `open-r1/OpenR1-Math-220k`
+- Config: `default`
+- Source split: `train`
+- Keep only `level in {2, 3}`
+- Keep only `problem_type in {Algebra, Number Theory}`
+- Targets are cleaned with the existing boxed-answer curation policy and written as RLVR verifier answers.
+
+Integrity notes:
+
+- The script writes only new staged RLVR JSONL under `data/rlvr_prompts/`.
+- `data/raw/`, eval prompts, reward semantics, and existing train/val/test splits are not modified.
+- The output must validate with `make validate-data` before use in GRPO.
+- If the source records do not expose a parseable `level` field, the script fails explicitly instead of silently weakening the filter.
+
 ## Synthetic E2E Math Fixture
 
 Status: `synthetic-e2e-diverse-v2` is a toy fixture for pipeline, SFT smoke testing, and small RLVR signal checks, not a real math benchmark.

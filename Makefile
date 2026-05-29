@@ -1,7 +1,8 @@
-.PHONY: format lint test test-rewards test-eval validate-data validate-sympy-boxed-data build-sympy-boxed-data check-leakage eval-baseline eval-math-dataset-dry sft-smoke sft-openr1-math-1k sft-openr1-math-1k-long sft-openr1-format-repair sft-qwen3-4b-format-repair-tiny sft-qwen3-4b-sympy-boxed-smoke sft-qwen3-4b-sympy-boxed-full sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
+.PHONY: format lint test test-rewards test-eval validate-data validate-sympy-boxed-data build-sympy-boxed-data openr1-level-rlvr-data check-leakage eval-baseline eval-math-dataset-dry sft-smoke sft-openr1-math-1k sft-openr1-math-1k-long sft-openr1-format-repair sft-qwen3-4b-format-repair-tiny sft-qwen3-4b-sympy-boxed-smoke sft-qwen3-4b-sympy-boxed-full sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
 PYTHON ?= python3
 RUN_FRONTIER_AUDIT ?= 0
 SYMPY_BOXED_DATA_DIR ?= data/staged/openr1_deepmath_sympy_boxed_v1
+OPENR1_LEVEL_RLVR_DIR ?= data/rlvr_prompts/openr1_math_l2_l3_alg_nt_v1
 
 format:
 	@echo "format placeholder: no formatter configured yet"
@@ -26,6 +27,9 @@ validate-data:
 	@if [ -f $(SYMPY_BOXED_DATA_DIR)/train.jsonl ]; then $(MAKE) validate-sympy-boxed-data; fi
 	@if [ -f data/rlvr_prompts/frontier_grpo_train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path data/rlvr_prompts/frontier_grpo_train.jsonl; fi
 	@if [ -f data/rlvr_prompts/gsm8k_train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path data/rlvr_prompts/gsm8k_train.jsonl; fi
+	@if [ -f $(OPENR1_LEVEL_RLVR_DIR)/train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path $(OPENR1_LEVEL_RLVR_DIR)/train.jsonl; fi
+	@if [ -f $(OPENR1_LEVEL_RLVR_DIR)/val.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path $(OPENR1_LEVEL_RLVR_DIR)/val.jsonl; fi
+	@if [ -f $(OPENR1_LEVEL_RLVR_DIR)/test.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path $(OPENR1_LEVEL_RLVR_DIR)/test.jsonl; fi
 	@if [ -f runs/rlvr/gsm8k_frontier_audit_thinking_false/frontier_grpo_train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path runs/rlvr/gsm8k_frontier_audit_thinking_false/frontier_grpo_train.jsonl; fi
 	@if [ -f runs/rlvr/gsm8k_frontier_audit_thinking_true/frontier_grpo_train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path runs/rlvr/gsm8k_frontier_audit_thinking_true/frontier_grpo_train.jsonl; fi
 
@@ -36,6 +40,9 @@ validate-sympy-boxed-data:
 
 build-sympy-boxed-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.math_sft_curation --output-dir $(SYMPY_BOXED_DATA_DIR)
+
+openr1-level-rlvr-data:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.openr1_level_filter --output-dir $(OPENR1_LEVEL_RLVR_DIR)
 
 check-leakage:
 	@echo "check-leakage placeholder: no leakage checker configured yet"
