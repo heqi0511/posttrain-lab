@@ -96,6 +96,46 @@ Record training and eval runs here with links to run directories, run cards, res
 - Eval metric uses boxed-answer extraction (`boxed_math_match`) instead of full-generation exact match, while preserving raw generations for review.
 - Output path will be `runs/sft/openr1_math_1k_len8192/`, so the previous `runs/sft/openr1_math_1k/` run is not overwritten.
 
+## Qwen3-4B Short Boxed / Format-Repair SFT
+
+- Config: `configs/sft/qwen3_4b_openr1_format_repair_tiny.yaml`
+- Command: `make sft-qwen3-4b-format-repair-tiny`
+- Base model: `Qwen/Qwen3-4B`
+- Dataset: `open-r1/Mixture-of-Thoughts`, config `math`, source split `train`.
+- Purpose: teach concise final-only boxed-answer format before testing whether GRPO has nonzero reward variance.
+- Output path: `runs/sft/qwen3_4b_openr1_format_repair_tiny/`.
+- This is a smoke-scale format-repair run, not a final SFT model.
+- Integrity note: `data/raw/`, fixed eval prompts, reward semantics, and train/val/test splits are unchanged.
+
+### 2026-05-29 Nexus Qwen3-4B Format-Repair Run
+
+- Slurm job: `6932612` on `cbcb-heng`, RTX A5000, completed successfully in `00:05:20`.
+- Git commit: `c1bc24a67fcc07cb4c6ae4a7d8ff50fcc475d99c`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/c1bc24a-qwen3-4b-format-repair`.
+- Output path: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/c1bc24a-qwen3-4b-format-repair/runs/sft/qwen3_4b_openr1_format_repair_tiny/`.
+- Staged data: `512` train and `128` validation examples.
+- Data hash: `6775d0c1361482ddbe029c2a40a54ab983b8288e0347049f342c58ed47b7bc30`.
+- Config hash: `0d7dac866e88a64cb95ae03e792a2285da6ef8c356488968f558281ad11b6d48`.
+- Training: `300` max steps, LoRA rank `16`, max sequence length `2048`, save/eval every `50` steps.
+- Validation loss by checkpoint: `50=1.532`, `100=1.247`, `150=1.165`, `200=1.091`, `250=1.080`, `300=1.076`.
+- Selected checkpoint by minimum eval loss: `checkpoint-300`; server marker: `selected_checkpoint.json`.
+- Final train loss: `1.3789`; final validation loss: `1.0760`.
+- Eval-after-train on 16 validation prompts: boxed-answer match `0.3125`, answer parse failure rate `0.0`, average completion length `14.94`.
+- Interpretation: the format-repair run fixed boxed-format parseability on the sampled eval set, but math correctness remains limited on these harder OpenR1 math prompts.
+
+### 2026-05-29 Qwen3-4B GRPO Feasibility Audit
+
+- Audit job: `6932640` on `cbcb-heng`, RTX A5000, completed successfully in `00:01:06`.
+- Policy checkpoint: `runs/sft/qwen3_4b_openr1_format_repair_tiny/checkpoint-300`.
+- Audit data: first `16` train prompts converted from the staged SFT data to RLVR JSONL under `runs/rlvr/qwen3_4b_format_repair_feasibility/`.
+- Rollout settings: `4` completions per prompt, temperature `0.9`, top-p `0.95`, max new tokens `64`, thinking disabled.
+- Reward: `math_boxed_v001`; no reward semantics were changed.
+- Summary: `13` all-zero prompts, `1` all-one prompt, `2` mixed prompts.
+- Effective mixed group rate: `0.125`; selected frontier prompt rate: `0.125`.
+- Parse failure rate: `0.015625`; average completion length: `13.95`; mean unique parsed answers per prompt: `3.44`.
+- Filtered frontier data: `2` prompts; excluded data: `14` prompts. The filtered RLVR JSONL validated successfully.
+- Interpretation: this checkpoint is format-compliant enough for reward parsing, but it is not yet a good GRPO starting point on this prompt sample because most groups still have zero reward variance. Do not launch a larger GRPO run from this result alone.
+
 ## Qwen3-0.6B Overfit-32
 
 - Config: `configs/sft/qwen3_0_6b_overfit32.yaml`
