@@ -65,6 +65,25 @@ Record training and eval runs here with links to run directories, run cards, res
 - Selection policy: stream source records, deterministically shuffle with seed `17` and buffer `10000`, then stage `1000` train and `128` validation examples.
 - Integrity note: `data/raw/`, fixed eval prompts, reward semantics, and existing train/val/test fixtures are unchanged.
 
+### 2026-05-29 Nexus OpenR1 Math SFT-1k Run
+
+- Slurm job: `6930990` on `cbcb-heng`, RTX A6000, completed successfully in `00:14:37`.
+- Git commit: `454caf6a581cd37ff0eb935049cde0a2b4b38d11`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/454caf6-openr1-sft`.
+- Output path: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/454caf6-openr1-sft/runs/sft/openr1_math_1k/`.
+- Staged data: `1000` train and `128` validation examples from `open-r1/Mixture-of-Thoughts`, config `math`, source split `train`.
+- Data hash: `46bea95d594bc995aae1e7488d29adde45b5bc168602fc454dd69ca47ebde863`.
+- Config hash: `f6fb8b7c2e3e66c493d214e4454b6d370e0c5c81afcfe0bead1f44feb1463eb8`.
+- Training: `1000` max steps, LoRA, save every `100` steps, `10` checkpoints saved from `checkpoint-100` through `checkpoint-1000`.
+- First logged train loss: `0.5500`; final trainer loss: `0.5673`; final logged step loss: `0.5585`.
+- Validation loss by checkpoint: `100=0.5800`, `200=0.5691`, `300=0.5661`, `400=0.5636`, `500=0.5621`, `600=0.5607`, `700=0.5601`, `800=0.5594`, `900=0.5589`, `1000=0.5586`.
+- Best validation checkpoint in this run: `checkpoint-1000` with eval loss `0.5586` and eval mean token accuracy `0.8249`.
+- Practical GRPO initialization note: `checkpoint-1000` is the best candidate by validation loss; `checkpoint-900` is a conservative alternative because the improvement from `900` to `1000` is small.
+- Fixed baseline eval after training: exact match `0.0`, format success `0.0`, parse failure rate `1.0`, average output length `178.0`.
+- Raw fixed-eval generation solved `2 + 2` and included `\boxed{4}`, but also included reasoning text, so it failed the strict final-only baseline format.
+- Manual generation check saved `20` sampled generations for review in `sample_generations.jsonl`.
+- Interpretation: this run did not show validation-loss overfitting within `1000` steps. It produced useful reasoning-style checkpoints, but it did not yet satisfy the strict concise boxed-answer eval contract needed for reward/eval comparability.
+
 ## Qwen3-0.6B Overfit-32
 
 - Config: `configs/sft/qwen3_0_6b_overfit32.yaml`
