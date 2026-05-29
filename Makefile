@@ -1,4 +1,4 @@
-.PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
+.PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline eval-math-dataset-dry sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
 PYTHON ?= python3
 RUN_FRONTIER_AUDIT ?= 0
 
@@ -15,7 +15,7 @@ test-rewards:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m pytest -q tests/test_math_reward.py
 
 test-eval:
-	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m pytest -q tests/test_eval_runner.py
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m pytest -q tests/test_eval_runner.py tests/test_math_dataset_eval.py
 
 validate-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type sft --path tests/fixtures/sft_good.jsonl
@@ -34,6 +34,9 @@ eval-baseline:
 	@mkdir -p /tmp/posttrain_lab_eval
 	@printf '%s\n' '{"id":"baseline-001","prompt":"Return the answer to 2 + 2 in boxed format.","answer":"\\boxed{4}","mock_generation":"\\boxed{4}"}' > /tmp/posttrain_lab_eval/baseline_prompts.jsonl
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.eval.eval_runner --config configs/eval/baseline.yaml
+
+eval-math-dataset-dry:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.eval.math_dataset_eval --dataset-id dummy --dataset-config default --split train --model-name dummy --output-dir /tmp/posttrain_lab_math_dataset_eval --sample-size 1 --dry-run
 
 sft-smoke: eval-baseline
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_sft --config configs/sft/smoke_1k.yaml

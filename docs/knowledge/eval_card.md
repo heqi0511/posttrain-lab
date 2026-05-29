@@ -39,3 +39,32 @@ Dry-run mode uses `mock_generation` and does not load a model. Non-dry-run mode 
 ```bash
 make eval-baseline
 ```
+
+## Math Dataset Pilot Eval
+
+Status: pilot evaluator implemented for sampled Hugging Face math datasets.
+
+Command shape:
+
+```bash
+python -m posttrain_lab.eval.math_dataset_eval \
+  --dataset-id trl-lib/DeepMath-103K \
+  --dataset-config default \
+  --split train \
+  --model-name Qwen/Qwen3-4B \
+  --output-dir runs/eval/math_dataset_pilot/qwen3_4b_deepmath \
+  --sample-size 50 \
+  --seed 20260529 \
+  --max-new-tokens 2048 \
+  --enable-thinking false \
+  --trust-remote-code
+```
+
+Evaluation policy:
+
+- Use a fixed seed and record `sample_size`, dataset id/config/split, model id, decoding settings, and thinking mode.
+- Score with the existing `math_boxed_v001` reward; do not change reward semantics for dataset comparisons.
+- Save `raw_generations.jsonl`, `sample_generations.jsonl`, `eval_summary.json`, and `eval_report.md`.
+- Treat accuracy as strict boxed-answer accuracy. It is useful for RLVR readiness but may undercount mathematically equivalent answers not normalized by the current reward.
+- Report parse failure rate, truncation rate, and correctness given parse so format failures are not confused with math failures.
+- Nexus runs should use `scripts/slurm/run_math_dataset_eval.sh` from a clean git commit.
