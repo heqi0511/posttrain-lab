@@ -3,8 +3,10 @@ from pathlib import Path
 
 from posttrain_lab.train.train_sft import (
     _convert_hf_sft_record,
+    _enable_generation_cache,
     _final_boxed_answer_from_example,
     _normalize_hf_messages,
+    _restore_generation_cache,
     _write_validation_eval_prompts,
     load_config,
     load_sft_train_examples,
@@ -222,6 +224,29 @@ def test_validation_eval_prompt_writer_extracts_final_boxed_answers(tmp_path):
     assert written == str(path)
     rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     assert rows == [{"id": "val-1", "prompt": "Compute 2 + 2.", "answer": "4"}]
+
+
+def test_generation_cache_is_temporarily_enabled_and_restored():
+    class Config:
+        def __init__(self, use_cache):
+            self.use_cache = use_cache
+
+    class Model:
+        def __init__(self):
+            self.config = Config(False)
+            self.generation_config = Config(False)
+
+    model = Model()
+
+    state = _enable_generation_cache(model)
+
+    assert model.config.use_cache is True
+    assert model.generation_config.use_cache is True
+
+    _restore_generation_cache(model, state)
+
+    assert model.config.use_cache is False
+    assert model.generation_config.use_cache is False
 
 
 def test_hf_message_normalization_and_openr1_conversion():

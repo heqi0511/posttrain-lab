@@ -405,27 +405,55 @@ def _write_generation_check(path, config, dry_run, model=None, tokenizer=None, e
     if not dry_run and hasattr(model, "eval"):
         model.eval()
 
-    for index, prompt in enumerate(prompts):
-        if dry_run:
-            generation = _dry_generation_for_prompt(prompt)
-        else:
-            generation = _generate_text(
-                model,
-                tokenizer,
-                prompt,
-                config["generation_check"]["max_new_tokens"],
-                enable_thinking=config["generation_check"]["enable_thinking"],
+    cache_state = _enable_generation_cache(model) if not dry_run else None
+    try:
+        for index, prompt in enumerate(prompts):
+            if dry_run:
+                generation = _dry_generation_for_prompt(prompt)
+            else:
+                generation = _generate_text(
+                    model,
+                    tokenizer,
+                    prompt,
+                    config["generation_check"]["max_new_tokens"],
+                    enable_thinking=config["generation_check"]["enable_thinking"],
+                )
+            rows.append(
+                {
+                    "id": f"generation-check-{index}",
+                    "prompt": prompt,
+                    "generation": generation,
+                    "dry_run": dry_run,
+                }
             )
-        rows.append(
-            {
-                "id": f"generation-check-{index}",
-                "prompt": prompt,
-                "generation": generation,
-                "dry_run": dry_run,
-            }
-        )
-    _write_jsonl(path, rows)
+            _write_jsonl(path, rows)
+    finally:
+        _restore_generation_cache(model, cache_state)
+
+    if not prompts:
+        _write_jsonl(path, rows)
     return rows
+
+
+def _enable_generation_cache(model):
+    """Temporarily undo gradient-checkpointing cache disablement for generation."""
+
+    state = {}
+    for attr_name in ("config", "generation_config"):
+        config_obj = getattr(model, attr_name, None)
+        if config_obj is not None and hasattr(config_obj, "use_cache"):
+            state[attr_name] = getattr(config_obj, "use_cache")
+            setattr(config_obj, "use_cache", True)
+    return state
+
+
+def _restore_generation_cache(model, state):
+    if not state:
+        return
+    for attr_name, value in state.items():
+        config_obj = getattr(model, attr_name, None)
+        if config_obj is not None and hasattr(config_obj, "use_cache"):
+            setattr(config_obj, "use_cache", value)
 
 
 def _write_synthetic_sft_jsonl(path, train_count, validation_count, answer_format="plain", problem_style="increment"):

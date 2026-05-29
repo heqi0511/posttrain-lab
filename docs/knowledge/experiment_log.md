@@ -341,3 +341,5 @@ Record training and eval runs here with links to run directories, run cards, res
 - Eval policy: validation examples are converted into fixed eval prompts; scoring compares the visible final `\boxed{...}` answer against the target answer, not the full reasoning trace.
 - First Slurm attempt `6931368` failed at step `100` during validation loss with CUDA OOM because the default eval batch size was `8`.
 - Follow-up fix: set `per_device_eval_batch_size=1` for long-context SFT validation before rerunning. This does not change the data, reward semantics, eval prompts, or train/validation/test split policy.
+- Second Slurm attempt `6931381` completed the 1000-step training phase and wrote checkpoints through `checkpoint-1000`, but was cancelled during post-training sample generation after it reused the training model with `use_cache=False`.
+- Follow-up fix: temporarily restore `use_cache=True` for generation checks and write `sample_generations.jsonl` incrementally so long generations leave inspectable partial output.
