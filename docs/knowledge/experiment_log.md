@@ -331,3 +331,13 @@ Record training and eval runs here with links to run directories, run cards, res
 - Relaxed diagnostic accuracy, using the existing compatibility scorer that allows repeated identical boxed answers and non-final boxed answers, was `0.18`, `0.12`, `0.44`, and `0.32` for the rows above. This diagnostic did not change reward semantics.
 - Interpretation: both datasets are much harder than GSM8K for the current models. `Qwen/Qwen3-0.6B` solves too few examples to be a good direct GRPO policy without SFT/warmup. `Qwen/Qwen3-4B` has meaningful math signal, especially on parseable outputs, but strict-format failures and truncation remain material.
 - Recommendation: use these datasets as the next source pool, but start with format/prompt stabilization and a small SFT warmup before GRPO. For RLVR, prefer `Qwen/Qwen3-4B` or an SFT-initialized 0.6B policy; do not treat 0.6B base as ready to solve these datasets directly.
+
+### 2026-05-29 OpenR1 Qwen3-0.6B SFT Smoke Long Context
+
+- Goal: rerun the 1k SFT smoke with OpenR1-style reasoning enabled, longer context, longer evaluation generation, and boxed-final-answer scoring.
+- Config: `configs/sft/openr1_math_1k_len8192.yaml`.
+- Data source: `open-r1/Mixture-of-Thoughts`, `math` config, streamed `train` split, seed `17`; staged as `1000` train and `128` validation examples.
+- Length policy: train/eval sequence length `8192`; generation check and post-train eval `max_new_tokens=2048`; thinking remains enabled.
+- Eval policy: validation examples are converted into fixed eval prompts; scoring compares the visible final `\boxed{...}` answer against the target answer, not the full reasoning trace.
+- First Slurm attempt `6931368` failed at step `100` during validation loss with CUDA OOM because the default eval batch size was `8`.
+- Follow-up fix: set `per_device_eval_batch_size=1` for long-context SFT validation before rerunning. This does not change the data, reward semantics, eval prompts, or train/validation/test split policy.

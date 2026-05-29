@@ -208,6 +208,7 @@ def _resolve_config(config):
     resolved["selection"].setdefault("max_validation_examples", 0)
     resolved["training"].setdefault("max_steps", 2)
     resolved["training"].setdefault("per_device_train_batch_size", 1)
+    resolved["training"].setdefault("per_device_eval_batch_size", 1)
     resolved["training"].setdefault("gradient_accumulation_steps", 1)
     resolved["training"].setdefault("learning_rate", 2e-4)
     resolved["training"].setdefault("max_seq_length", 512)
@@ -345,6 +346,7 @@ def _run_trl_training(config, train_examples, validation_examples, output_dir):
         output_dir=str(output_dir),
         max_steps=int(config["training"]["max_steps"]),
         per_device_train_batch_size=int(config["training"]["per_device_train_batch_size"]),
+        per_device_eval_batch_size=int(config["training"]["per_device_eval_batch_size"]),
         gradient_accumulation_steps=int(config["training"]["gradient_accumulation_steps"]),
         learning_rate=float(config["training"]["learning_rate"]),
         warmup_steps=int(config["training"]["warmup_steps"]),

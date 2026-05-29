@@ -181,6 +181,7 @@ def test_openr1_long_config_uses_reasoning_lengths_and_validation_eval():
     assert config["run_name"] == "sft-openr1-math-1k-len8192"
     assert config["output_dir"] == "runs/sft/openr1_math_1k_len8192"
     assert config["training"]["max_seq_length"] == 8192
+    assert config["training"]["per_device_eval_batch_size"] == 1
     assert config["generation_check"]["max_new_tokens"] == 2048
     assert config["generation_check"]["enable_thinking"] is True
     assert config["eval_after_train"]["prompt_source"] == "validation"
