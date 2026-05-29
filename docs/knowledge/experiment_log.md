@@ -265,3 +265,24 @@ Record training and eval runs here with links to run directories, run cards, res
 - Affected targets: `rlvr-frontier-audit`, `rlvr-frontier-smoke`, `rlvr-gsm8k-scout-*`, and `rlvr-gsm8k-audit-*`.
 - This does not delete the audit implementation, change reward semantics, alter GSM8K conversion, modify eval prompts, or change train/validation/test split policy.
 - Current interpretation for data choice: GSM8K is useful as a sanity benchmark, but Qwen/Qwen3-4B appears too often correct once formatting and truncation are controlled, so it is a weak main source for GRPO advantage signal. Harder math data from the TRL/open-r1 style workflow should be evaluated next, with source/license/split review before adding it as training data.
+
+### 2026-05-29 DeepMath/OpenR1 Qwen3 Pilot Eval
+
+- Goal: estimate whether `Qwen/Qwen3-0.6B` and `Qwen/Qwen3-4B` can solve sampled examples from `trl-lib/DeepMath-103K` and `open-r1/OpenR1-Math-220k`.
+- Git commit: `52d723f455e0c1cb5897e6433d6f6a3ce01323eb`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/52d723f-math-dataset-eval`.
+- Eval command: `scripts/slurm/run_math_dataset_eval.sh`.
+- Settings: `50` streamed train examples per dataset/model, seed `20260529`, greedy decoding, `max_new_tokens=2048`, `enable_thinking=false`, `math_boxed_v001` strict reward, no training.
+- Slurm jobs: smoke `6930645`; pilot jobs `6930647`, `6930648`, `6930649`, and `6930650`, all completed successfully on `cbcb-heng`.
+- Results were synced locally under `runs/eval/math_dataset_pilot/`; generated run artifacts are not source files and are not committed.
+
+| Model | Dataset | Strict boxed accuracy | Parse failure rate | Correctness given parse | Truncation rate | Avg completion tokens |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `Qwen/Qwen3-0.6B` | `trl-lib/DeepMath-103K` | `0.18` | `0.12` | `0.2045` | `0.06` | `496.5` |
+| `Qwen/Qwen3-0.6B` | `open-r1/OpenR1-Math-220k` | `0.12` | `0.12` | `0.1364` | `0.04` | `340.5` |
+| `Qwen/Qwen3-4B` | `trl-lib/DeepMath-103K` | `0.36` | `0.32` | `0.5294` | `0.12` | `947.3` |
+| `Qwen/Qwen3-4B` | `open-r1/OpenR1-Math-220k` | `0.26` | `0.46` | `0.4815` | `0.24` | `1123.4` |
+
+- Relaxed diagnostic accuracy, using the existing compatibility scorer that allows repeated identical boxed answers and non-final boxed answers, was `0.18`, `0.12`, `0.44`, and `0.32` for the rows above. This diagnostic did not change reward semantics.
+- Interpretation: both datasets are much harder than GSM8K for the current models. `Qwen/Qwen3-0.6B` solves too few examples to be a good direct GRPO policy without SFT/warmup. `Qwen/Qwen3-4B` has meaningful math signal, especially on parseable outputs, but strict-format failures and truncation remain material.
+- Recommendation: use these datasets as the next source pool, but start with format/prompt stabilization and a small SFT warmup before GRPO. For RLVR, prefer `Qwen/Qwen3-4B` or an SFT-initialized 0.6B policy; do not treat 0.6B base as ready to solve these datasets directly.
