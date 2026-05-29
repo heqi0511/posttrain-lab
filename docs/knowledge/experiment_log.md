@@ -343,3 +343,11 @@ Record training and eval runs here with links to run directories, run cards, res
 - Follow-up fix: set `per_device_eval_batch_size=1` for long-context SFT validation before rerunning. This does not change the data, reward semantics, eval prompts, or train/validation/test split policy.
 - Second Slurm attempt `6931381` completed the 1000-step training phase and wrote checkpoints through `checkpoint-1000`, but was cancelled during post-training sample generation after it reused the training model with `use_cache=False`.
 - Follow-up fix: temporarily restore `use_cache=True` for generation checks and write `sample_generations.jsonl` incrementally so long generations leave inspectable partial output.
+- Completed Slurm run `6931421` on commit `a105ae2c7cfcd8ffd3316dd9bae488fe84504681`; wall time `01:11:05`.
+- Training artifacts: `checkpoint-100` through `checkpoint-1000`, `loss_curve.csv`, `trainer_log.jsonl`, `sample_generations.jsonl`, `metrics.jsonl`, `run_card.md`, `eval/raw_generations.jsonl`, `eval/metrics.json`, and `eval_diff.md`.
+- Train loss summary: first logged loss `0.5809`, final train loss `0.5075`, last logged loss `0.5040`.
+- Validation loss curve by checkpoint: `100=0.5072`, `200=0.4980`, `300=0.4954`, `400=0.4933`, `500=0.4921`, `600=0.4913`, `700=0.4905`, `800=0.4899`, `900=0.4894`, `1000=0.4894`.
+- Best validation checkpoint for this smoke is `checkpoint-1000` by eval loss, but this is not a final model-selection decision.
+- Post-train validation generation eval: `answer_match=0.0`, `answer_parse_failure_rate=0.875`, `completion_length_mean=5493.75` characters across `8` validation prompts.
+- Failure diagnosis: `7/8` eval generations had `unclosed_think_block` under `max_new_tokens=2048`; `1/8` parsed but had an answer mismatch. The main remaining issue is long-thinking truncation/format closure, not SFT trainer execution.
+- Manual-review samples: `20` random generations saved; character length range `3203` to `9189`, mean `5694.8`.
