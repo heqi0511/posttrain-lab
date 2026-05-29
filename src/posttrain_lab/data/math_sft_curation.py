@@ -20,7 +20,7 @@ CHOICE_RE = re.compile(r"^[A-E]$", re.IGNORECASE)
 LOGICAL_WORD_RE = re.compile(r"\b(or|and)\b", re.IGNORECASE)
 PROOF_PROMPT_RE = re.compile(
     r"\b(prove|show that|provide a justification|justify your answer|"
-    r"is it possible|determine if|which is larger)\b",
+    r"is it possible|determine if|which is larger|please explain|explain your)\b",
     re.IGNORECASE,
 )
 BAD_PROMPT_RE = re.compile(
@@ -32,7 +32,7 @@ LEAK_OR_MULTIPART_RE = re.compile(
     r"(\banswer\s*\.|questions?:|maximum and minimum values|"
     r"find the maximum and minimum|\(1\).+\(2\)|\ba\)\s|\bb\)\s|\bc\)\s|"
     r"!\[|https?://|translation preserves|translated|youth clue|figure below|"
-    r"how many.+and how many)",
+    r"depicted below|shown below|as shown|how many.+and how many|\bshould\b)",
     re.IGNORECASE,
 )
 CONTROL_REPAIRS = {
@@ -353,6 +353,8 @@ def _sanitize_target(target):
         return None, "uppercase_text_target"
     if re.search(r"[a-zA-Z]{3,}", probe):
         return None, "word_like_target"
+    if "," in target and not target.startswith(r"\{"):
+        target = r"\{" + target + r"\}"
 
     return rf"\boxed{{{target}}}", ""
 

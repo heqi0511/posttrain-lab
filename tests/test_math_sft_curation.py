@@ -41,3 +41,24 @@ def test_curate_pair_rejects_image_problem():
 
     assert decision.action == "reject"
     assert decision.reason == "answer_leak_or_multipart_prompt"
+
+
+def test_curate_pair_rejects_depicted_below_problem():
+    decision = curate_pair("A rectangle is folded as depicted below. Find the ratio.", r"\boxed{\sqrt{5}}")
+
+    assert decision.action == "reject"
+    assert decision.reason == "answer_leak_or_multipart_prompt"
+
+
+def test_curate_pair_rejects_explanation_prompt():
+    decision = curate_pair("Find n. Please explain your answer.", r"\boxed{7}")
+
+    assert decision.action == "reject"
+    assert decision.reason == "proof_or_boolean_prompt"
+
+
+def test_curate_pair_standardizes_comma_list_as_set():
+    decision = curate_pair("List all values.", r"\boxed{1,2,3}")
+
+    assert decision.action == "keep"
+    assert decision.clean_target == r"\boxed{\{1,2,3\}}"
