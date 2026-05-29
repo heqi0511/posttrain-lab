@@ -19,6 +19,8 @@ dataset:
   difficulty: mixed
   license: source-dataset-card
   shuffle: true
+  streaming: true
+  shuffle_buffer_size: 10000
 selection:
   train_split: train
   validation_split: val

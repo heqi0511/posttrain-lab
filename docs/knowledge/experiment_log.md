@@ -62,7 +62,7 @@ Record training and eval runs here with links to run directories, run cards, res
 - This is a smoke-scale real SFT run intended to produce candidate checkpoints for later GRPO initialization, not a final SFT model.
 - Checkpoint policy: save every `100` steps and keep up to `10` checkpoints.
 - Required artifacts: `trainer_log.jsonl`, `loss_curve.csv`, `checkpoint_manifest.json`, `resolved_config.yaml`, `run_card.md`, `metrics.jsonl`, `sample_generations.jsonl`, and `eval_diff.md`.
-- Selection policy: deterministically shuffle source records with seed `17`, then stage `1000` train and `128` validation examples.
+- Selection policy: stream source records, deterministically shuffle with seed `17` and buffer `10000`, then stage `1000` train and `128` validation examples.
 - Integrity note: `data/raw/`, fixed eval prompts, reward semantics, and existing train/val/test fixtures are unchanged.
 
 ## Qwen3-0.6B Overfit-32

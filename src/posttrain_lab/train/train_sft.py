@@ -259,6 +259,8 @@ def _resolve_config(config):
     resolved["dataset"].setdefault("difficulty", "unknown")
     resolved["dataset"].setdefault("license", "source-dataset-card")
     resolved["dataset"].setdefault("shuffle", True)
+    resolved["dataset"].setdefault("streaming", False)
+    resolved["dataset"].setdefault("shuffle_buffer_size", 10000)
     if resolved["run_name"] == "sft-overfit32" and resolved["selection"]["max_train_examples"] != 32:
         raise ValueError("overfit-32 requires selection.max_train_examples == 32")
     return resolved
@@ -478,9 +480,20 @@ def _write_hf_sft_jsonl(path, config):
     load_kwargs = {}
     if dataset_config["config"]:
         load_kwargs["name"] = dataset_config["config"]
-    dataset = load_dataset(dataset_id, split=dataset_config["split"], **load_kwargs)
+    dataset = load_dataset(
+        dataset_id,
+        split=dataset_config["split"],
+        streaming=bool(dataset_config["streaming"]),
+        **load_kwargs,
+    )
     if dataset_config["shuffle"]:
-        dataset = dataset.shuffle(seed=int(config["seed"]))
+        if dataset_config["streaming"]:
+            dataset = dataset.shuffle(
+                seed=int(config["seed"]),
+                buffer_size=int(dataset_config["shuffle_buffer_size"]),
+            )
+        else:
+            dataset = dataset.shuffle(seed=int(config["seed"]))
 
     rows = []
     skipped = 0
@@ -509,6 +522,8 @@ def _write_hf_sft_jsonl(path, config):
                 "source_split": dataset_config["split"],
                 "seed": int(config["seed"]),
                 "shuffle": bool(dataset_config["shuffle"]),
+                "streaming": bool(dataset_config["streaming"]),
+                "shuffle_buffer_size": int(dataset_config["shuffle_buffer_size"]),
                 "train_examples": int(config["selection"]["max_train_examples"]),
                 "validation_examples": int(config["selection"]["max_validation_examples"]),
                 "skipped_records": skipped,

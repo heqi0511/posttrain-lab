@@ -169,6 +169,8 @@ def test_openr1_config_parses_dataset_and_checkpoint_fields():
     assert config["selection"]["max_validation_examples"] == 128
     assert config["training"]["save_steps"] == 100
     assert config["training"]["save_total_limit"] == 10
+    assert config["dataset"]["streaming"] is True
+    assert config["dataset"]["shuffle_buffer_size"] == 10000
 
 
 def test_hf_message_normalization_and_openr1_conversion():

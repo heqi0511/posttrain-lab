@@ -162,6 +162,7 @@ Source:
 Split policy:
 
 - Deterministically shuffle source records with the SFT config seed.
+- Use Hugging Face streaming mode with a fixed shuffle buffer to avoid downloading the full dataset for this smoke-scale run.
 - Stage the first `1000` usable records as train.
 - Stage the next `128` usable records as validation.
 - Do not use OpenR1 records for eval prompts in this step.
