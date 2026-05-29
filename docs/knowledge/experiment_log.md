@@ -371,3 +371,16 @@ Record training and eval runs here with links to run directories, run cards, res
 - Manual-review samples: `20` random generations saved; `19/20` had a parseable boxed answer. One sample emitted an overlong unclosed boxed number, so the next GRPO step should keep parse-failure and output-length gates.
 - Checkpoint retained for next GRPO: `checkpoint-500`, because it had the best validation loss and final eval had zero parse failures. The root adapter at `runs/sft/openr1_math_format_repair_1k/` is equivalent to the final saved adapter for loading, but `checkpoint-500` is the explicit immutable selection.
 - Interpretation: this run fixed the main format/truncation problem from the long SFT run, improving parse failure from `0.875` to `0.0` on validation eval and reducing average eval output length from about `5494` characters to `15.56`. It did not solve math accuracy on the harder OpenR1 validation slice; most wrong cases are short parseable boxed guesses. GRPO should treat this as a format-stabilized policy, not a strong math policy.
+
+### 2026-05-29 Format-Repair Checkpoint Tiny GRPO Feasibility Audit
+
+- Goal: quickly test whether the format-repair `checkpoint-500` can be used as a GRPO starting policy without running trainer steps.
+- Job: Slurm `6932587`, `grpo-feas-v2`, completed in about `9` seconds of audit runtime.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/ae9054a-openr1-format-repair-sft`.
+- Output path: `runs/rlvr/format_repair_checkpoint_feasibility_v2/`.
+- Policy checkpoint: `runs/sft/openr1_math_format_repair_1k/checkpoint-500`.
+- Prompt source: temporary RLVR JSONL converted from the format-repair SFT staged `train` split; no raw data, eval prompts, reward semantics, or train/validation/test split policy were modified.
+- Scale: `8` train prompts, `4` sampled completions per prompt, `32` total completions, `temperature=0.9`, `top_p=0.95`, `max_new_tokens=64`, `enable_thinking=false`.
+- Result: parse failure rate `0.03125`, average completion length `16.94`, all-zero prompts `6/8`, all-one prompts `0/8`, mixed prompts `2/8`, effective mixed group rate `0.25`.
+- Frontier output: `2` prompts passed the tiny frontier filter and the filtered RLVR JSONL validated successfully.
+- Interpretation: the checkpoint is feasible for a very small GRPO smoke because it loads, generates concise boxed answers, and has nonzero mixed groups. It is not ready for direct larger GRPO because most sampled prompts are all-zero and would provide no within-group advantage.
