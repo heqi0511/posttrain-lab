@@ -459,3 +459,19 @@ Record training and eval runs here with links to run directories, run cards, res
 - Prompt buckets: `17/24` all-zero, `1/24` all-one, `6/24` mixed; effective mixed group rate `0.25`.
 - Frontier filter result: `3/24` prompts kept (`12.5%` selected); the filtered RLVR JSONL validated successfully.
 - Interpretation: the checkpoint is suitable for a very small GRPO smoke because it produces stable boxed outputs and has some mixed reward groups. It is not yet suitable for direct larger GRPO on unfiltered prompts because most prompts are all-zero and provide no within-group advantage.
+
+### 2026-05-29 Qwen3-4B SymPy-Boxed GRPO Smoke
+
+- Goal: start from `runs/sft/qwen3_4b_sympy_boxed_full/checkpoint-1800` and run a minimal real GRPO smoke to test whether the current checkpoint produces useful training signal.
+- Code commit used on server: `e91096b015d55ab5fa5833174d4a7aad7266e0eb`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/4affb7b-sympy-boxed-data`.
+- Output path: `runs/rlvr/qwen3_4b_sympy_boxed_grpo_smoke/`.
+- Slurm jobs: training `6933656` completed in `00:02:03`; small eval `6933664` completed in `00:01:09`.
+- Training data: temporary smoke JSONL under `runs/`, made by repeating the `3` frontier prompts kept by the prior audit to `24` rows with unique IDs. No raw data, eval prompts, reward semantics, or train/validation/test split policy were modified.
+- GRPO settings: `12` steps, `num_generations=8`, `per_device_train_batch_size=8`, `max_completion_length=64`, `temperature=0.9`, `top_p=0.95`, `learning_rate=5e-7`, `beta=0.0`, `enable_thinking=false`.
+- Reward config: `math_boxed_v001` with `allow_symbolic_equivalence=true` and `symbolic_equivalence_engine=sympy`.
+- Rollout-format gate before training: reward mean `0.2083`, reward std `0.4061`, parse failure rate `0.0`, effective mixed group rate `1.0`, average completion length `16.71`.
+- Trainer signal: `12/12` trainer steps logged, mean reward `0.2604`, mean reward std `0.4135`, frac reward zero std `0.0833`, effective mixed group rate `0.9167`, nonzero grad step rate `0.9167`, parse failure rate `0.0`, average completion length `9.71`.
+- Post-training train-prompt sample: reward mean `0.2917`, parse failure rate `0.0`, effective mixed group rate `1.0`.
+- Small heldout eval on a fixed random sample of `32` eval prompts: SFT answer match `0.21875`; SFT+GRPO answer match `0.1875`; both had format success `0.96875` and parse failure rate `0.03125`.
+- Interpretation: the GRPO loop is technically working and provides nonzero advantage/gradient on the selected frontier prompts, but this tiny run did not improve heldout accuracy. Do not continue training longer on the same `3` prompts. The next RLVR run should use a larger and more diverse frontier set, then repeat a short GRPO smoke with heldout eval before scaling steps.
