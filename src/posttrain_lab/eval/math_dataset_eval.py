@@ -275,7 +275,7 @@ class HFBatchedMathGenerator:
         model_kwargs = {"trust_remote_code": trust_remote_code}
         dtype = _torch_dtype(config.get("torch_dtype"))
         if dtype is not None:
-            model_kwargs["torch_dtype"] = dtype
+            model_kwargs["dtype"] = dtype
         self.model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
         if torch.cuda.is_available():
             self.model = self.model.to("cuda")
