@@ -88,3 +88,75 @@ def test_math_boxed_v001_does_not_accept_unclosed_think_blocks():
     result = score_math_boxed_v001("<think>Try 4.\n\\boxed{4}", "4")
 
     assert result.score == 0.0
+
+
+def test_sympy_equivalence_is_disabled_by_default_for_algebra():
+    result = score_math_boxed_v001(r"\boxed{2(x+1)}", "2x+2")
+
+    assert result.score == 0.0
+    assert result.reason == "answer_mismatch"
+
+
+def test_sympy_equivalence_accepts_decimal_fraction_when_enabled():
+    pytest.importorskip("latex2sympy2")
+
+    result = score_math_boxed_v001(
+        r"\boxed{0.5}",
+        r"\frac{1}{2}",
+        config=MathRewardConfig(allow_symbolic_equivalence=True, symbolic_equivalence_engine="sympy"),
+    )
+
+    assert result.score == 1.0
+    assert result.reason == "sympy_equivalence"
+
+
+def test_sympy_equivalence_accepts_algebraic_expansion_when_enabled():
+    pytest.importorskip("latex2sympy2")
+
+    result = score_math_boxed_v001(
+        r"\boxed{2(x+1)}",
+        "2x+2",
+        config=MathRewardConfig(allow_symbolic_equivalence=True, symbolic_equivalence_engine="sympy"),
+    )
+
+    assert result.score == 1.0
+    assert result.reason == "sympy_equivalence"
+
+
+def test_sympy_equivalence_accepts_unordered_sets_when_enabled():
+    pytest.importorskip("latex2sympy2")
+
+    result = score_math_boxed_v001(
+        r"\boxed{\{2,1,3\}}",
+        r"\{1,2,3\}",
+        config=MathRewardConfig(allow_symbolic_equivalence=True, symbolic_equivalence_engine="sympy"),
+    )
+
+    assert result.score == 1.0
+    assert result.reason == "sympy_equivalence"
+
+
+def test_sympy_equivalence_rejects_wrong_algebra_when_enabled():
+    pytest.importorskip("latex2sympy2")
+
+    result = score_math_boxed_v001(
+        r"\boxed{2(x+1)}",
+        "2x+3",
+        config=MathRewardConfig(allow_symbolic_equivalence=True, symbolic_equivalence_engine="sympy"),
+    )
+
+    assert result.score == 0.0
+    assert result.reason == "answer_mismatch"
+
+
+def test_sympy_equivalence_rejects_equation_parser_hacking():
+    pytest.importorskip("latex2sympy2")
+
+    result = score_math_boxed_v001(
+        r"\boxed{x=1}",
+        "1",
+        config=MathRewardConfig(allow_symbolic_equivalence=True, symbolic_equivalence_engine="sympy"),
+    )
+
+    assert result.score == 0.0
+    assert result.reason == "answer_mismatch"

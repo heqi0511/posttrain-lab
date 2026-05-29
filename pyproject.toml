@@ -18,6 +18,9 @@ data = [
     "datasets>=2",
     "latex2sympy2>=1.9.1",
 ]
+reward = [
+    "latex2sympy2>=1.9.1",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

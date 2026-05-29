@@ -2,7 +2,9 @@ import json
 from pathlib import Path
 
 from posttrain_lab.train.train_grpo import (
+    _math_reward_config,
     _rollout_format_gate_passed,
+    _resolve_config,
     _summarize_samples,
     _summarize_trainer_signal,
     load_config,
@@ -127,6 +129,49 @@ def test_frontier_grpo_smoke_config_records_requested_sampling_and_early_stop():
     assert config["training"]["frac_reward_zero_std_early_stop"] is True
     assert config["training"]["frac_reward_zero_std_threshold"] == 0.8
     assert config["training"]["frac_reward_zero_std_patience"] == 20
+
+
+def test_resolve_config_defaults_reward_equivalence_off(tmp_path):
+    data_path = tmp_path / "rlvr.jsonl"
+    output_dir = tmp_path / "runs" / "rlvr" / "grpo_smoke"
+    config_path = tmp_path / "grpo_smoke.yaml"
+    write_config(config_path, data_path, output_dir)
+
+    resolved = _resolve_config(load_config(config_path))
+    reward_config = _math_reward_config(resolved)
+
+    assert reward_config.allow_symbolic_equivalence is False
+    assert reward_config.symbolic_equivalence_engine == "fraction"
+
+
+def test_resolve_config_accepts_explicit_sympy_reward_engine(tmp_path):
+    data_path = tmp_path / "rlvr.jsonl"
+    output_dir = tmp_path / "runs" / "rlvr" / "grpo_smoke"
+    config_path = tmp_path / "grpo_smoke.yaml"
+    write_config(config_path, data_path, output_dir)
+    with config_path.open("a", encoding="utf-8") as handle:
+        handle.write(
+            "\n".join(
+                [
+                    "reward:",
+                    "  allow_symbolic_equivalence: true",
+                    "  symbolic_equivalence_engine: sympy",
+                    "  max_symbolic_expr_chars: 200",
+                    "  max_symbolic_ast_nodes: 128",
+                    "  max_symbolic_collection_size: 16",
+                ]
+            )
+            + "\n"
+        )
+
+    resolved = _resolve_config(load_config(config_path))
+    reward_config = _math_reward_config(resolved)
+
+    assert reward_config.allow_symbolic_equivalence is True
+    assert reward_config.symbolic_equivalence_engine == "sympy"
+    assert reward_config.max_symbolic_expr_chars == 200
+    assert reward_config.max_symbolic_ast_nodes == 128
+    assert reward_config.max_symbolic_collection_size == 16
 
 
 def test_load_rlvr_train_examples_selects_exact_train_records(tmp_path):

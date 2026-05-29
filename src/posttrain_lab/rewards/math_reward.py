@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import ast
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 
 REWARD_VERSION = "math_boxed_v001"
@@ -21,8 +21,12 @@ class MathRewardConfig:
     """Configuration for math_boxed_v001."""
 
     allow_symbolic_equivalence: bool = False
+    symbolic_equivalence_engine: str = "fraction"
     max_output_chars: int = 20_000
     max_answer_chars: int = 1_000
+    max_symbolic_expr_chars: int = _MAX_SYMBOLIC_EXPR_CHARS
+    max_symbolic_ast_nodes: int = _MAX_SYMBOLIC_AST_NODES
+    max_symbolic_collection_size: int = 32
 
 
 @dataclass(frozen=True)
@@ -57,11 +61,7 @@ def math_boxed_v001(
 
     if allow_symbolic_equivalence is not None:
         base = config or MathRewardConfig()
-        config = MathRewardConfig(
-            allow_symbolic_equivalence=allow_symbolic_equivalence,
-            max_output_chars=base.max_output_chars,
-            max_answer_chars=base.max_answer_chars,
-        )
+        config = replace(base, allow_symbolic_equivalence=allow_symbolic_equivalence)
     return score_math_boxed_v001(completion, answer, config=config).score
 
 
@@ -145,12 +145,11 @@ def score_math_boxed_v001(
             normalized_answer=normalized_answer,
         )
 
-    if config.allow_symbolic_equivalence and _symbolically_equivalent(
-        normalized_prediction, normalized_answer
-    ):
+    equivalence_reason = _symbolic_equivalence_reason(normalized_prediction, normalized_answer, config)
+    if equivalence_reason:
         return MathRewardResult(
             score=1.0,
-            reason="symbolic_equivalence",
+            reason=equivalence_reason,
             extracted_answer=boxed_answers[-1],
             normalized_prediction=normalized_prediction,
             normalized_answer=normalized_answer,
@@ -334,6 +333,141 @@ def _symbolically_equivalent(left: str, right: str) -> bool:
     left_value = _safe_fraction_eval(left)
     right_value = _safe_fraction_eval(right)
     return left_value is not None and right_value is not None and left_value == right_value
+
+
+def _symbolic_equivalence_reason(left: str, right: str, config: MathRewardConfig) -> Optional[str]:
+    if not config.allow_symbolic_equivalence:
+        return None
+
+    engine = str(config.symbolic_equivalence_engine or "fraction").lower()
+    if engine in {"none", "off", "disabled"}:
+        return None
+    if engine in {"fraction", "safe_fraction"}:
+        return "symbolic_equivalence" if _symbolically_equivalent(left, right) else None
+    if engine in {"sympy", "latex2sympy2"}:
+        return "sympy_equivalence" if _sympy_equivalent(left, right, config) else None
+    return None
+
+
+def _sympy_equivalent(left: str, right: str, config: MathRewardConfig) -> bool:
+    left_obj = _parse_latex_sympy_object(left, config)
+    right_obj = _parse_latex_sympy_object(right, config)
+    if left_obj is None or right_obj is None:
+        return False
+    return _sympy_objects_equivalent(left_obj, right_obj, config)
+
+
+def _parse_latex_sympy_object(expression: str, config: MathRewardConfig) -> Optional[Any]:
+    if len(expression) > int(config.max_symbolic_expr_chars):
+        return None
+    if _contains_sympy_rejected_syntax(expression):
+        return None
+    try:
+        from latex2sympy2 import latex2sympy
+    except ImportError:
+        return None
+    try:
+        parsed = latex2sympy(expression)
+    except Exception:
+        return None
+    if not _sympy_object_is_bounded(parsed, config):
+        return None
+    return parsed
+
+
+def _contains_sympy_rejected_syntax(expression: str) -> bool:
+    if "=" in expression:
+        return True
+    if any(token in expression for token in (r"\text", r"\mathrm", r"\begin", r"\cases")):
+        return True
+    if re.search(r"\b(?:yes|no|true|false|or|and)\b", expression, flags=re.IGNORECASE):
+        return True
+    if not re.fullmatch(r"[0-9A-Za-z\\{}()[\]+\-*/^_,.|\s]+", expression):
+        return True
+    return False
+
+
+def _sympy_object_is_bounded(value: Any, config: MathRewardConfig) -> bool:
+    sequence = _as_sequence(value)
+    if sequence is not None:
+        if len(sequence) > int(config.max_symbolic_collection_size):
+            return False
+        return all(_sympy_object_is_bounded(item, config) for item in sequence)
+
+    try:
+        import sympy
+    except ImportError:
+        return False
+    if not isinstance(value, sympy.Basic):
+        return False
+    return _sympy_node_count(value) <= int(config.max_symbolic_ast_nodes)
+
+
+def _sympy_objects_equivalent(left: Any, right: Any, config: MathRewardConfig) -> bool:
+    left_sequence = _as_sequence(left)
+    right_sequence = _as_sequence(right)
+    if left_sequence is not None or right_sequence is not None:
+        if left_sequence is None or right_sequence is None:
+            return False
+        if len(left_sequence) != len(right_sequence):
+            return False
+        if len(left_sequence) > int(config.max_symbolic_collection_size):
+            return False
+        unmatched = list(right_sequence)
+        for left_item in left_sequence:
+            match_index = next(
+                (
+                    index
+                    for index, right_item in enumerate(unmatched)
+                    if _sympy_expr_equivalent(left_item, right_item, config)
+                ),
+                None,
+            )
+            if match_index is None:
+                return False
+            unmatched.pop(match_index)
+        return not unmatched
+    return _sympy_expr_equivalent(left, right, config)
+
+
+def _sympy_expr_equivalent(left: Any, right: Any, config: MathRewardConfig) -> bool:
+    try:
+        import sympy
+    except ImportError:
+        return False
+    if not isinstance(left, sympy.Basic) or not isinstance(right, sympy.Basic):
+        return False
+    if (
+        _sympy_node_count(left) > int(config.max_symbolic_ast_nodes)
+        or _sympy_node_count(right) > int(config.max_symbolic_ast_nodes)
+    ):
+        return False
+    try:
+        difference = sympy.simplify(left - right)
+    except Exception:
+        return False
+    if _sympy_node_count(difference) > int(config.max_symbolic_ast_nodes):
+        return False
+    if difference == 0:
+        return True
+    try:
+        return difference.equals(0) is True
+    except Exception:
+        return False
+
+
+def _sympy_node_count(value: Any) -> int:
+    try:
+        import sympy
+    except ImportError:
+        return _MAX_SYMBOLIC_AST_NODES + 1
+    return sum(1 for _ in sympy.preorder_traversal(value))
+
+
+def _as_sequence(value: Any) -> Optional[List[Any]]:
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return None
 
 
 def _safe_fraction_eval(expression: str) -> Optional[Fraction]:

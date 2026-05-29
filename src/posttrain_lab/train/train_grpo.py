@@ -89,6 +89,19 @@ def math_boxed_reward_func(prompts, completions, answer, **kwargs):
     ]
 
 
+def make_math_boxed_reward_func(reward_config):
+    """Build a TRL reward function with an explicit math reward config."""
+
+    def _reward_func(prompts, completions, answer, **kwargs):
+        del prompts, kwargs
+        return [
+            math_boxed_v001(_completion_to_text(completion), target, config=reward_config)
+            for completion, target in zip(completions, answer)
+        ]
+
+    return _reward_func
+
+
 def run_grpo(config, config_path):
     """Run a dry-run or real TRL GRPO smoke experiment."""
 
@@ -257,6 +270,12 @@ def _resolve_config(config):
     resolved["rollout_format_gate"].setdefault("max_parse_failure_rate", 0.0)
     resolved["rollout_format_gate"].setdefault("max_reward_mean", None)
     resolved["rollout_format_gate"].setdefault("max_perfect_reward_rate", None)
+    resolved.setdefault("reward", {})
+    resolved["reward"].setdefault("allow_symbolic_equivalence", False)
+    resolved["reward"].setdefault("symbolic_equivalence_engine", "fraction")
+    resolved["reward"].setdefault("max_symbolic_expr_chars", 120)
+    resolved["reward"].setdefault("max_symbolic_ast_nodes", 64)
+    resolved["reward"].setdefault("max_symbolic_collection_size", 32)
     resolved.setdefault("eval_after_train", {})
     resolved["eval_after_train"].setdefault("enabled", False)
     resolved["eval_after_train"].setdefault("prompt_path", "/tmp/posttrain_lab_eval/baseline_prompts.jsonl")
@@ -297,6 +316,7 @@ def _run_trl_grpo(config, examples, output_dir):
         raise RuntimeError("TRL GRPO training requires transformers, datasets, trl, and peft") from exc
 
     model, tokenizer, peft_config = _load_policy_model_and_tokenizer(config)
+    reward_func = make_math_boxed_reward_func(_math_reward_config(config))
     train_dataset = Dataset.from_list(_to_grpo_rows(examples))
     args = GRPOConfig(
         output_dir=str(output_dir),
@@ -327,7 +347,7 @@ def _run_trl_grpo(config, examples, output_dir):
     )
     trainer = GRPOTrainer(
         model=model,
-        reward_funcs=math_boxed_reward_func,
+        reward_funcs=reward_func,
         args=args,
         train_dataset=train_dataset,
         processing_class=tokenizer,
@@ -605,6 +625,7 @@ def _to_grpo_rows(examples):
 
 def _write_sample_rollouts(path, config, examples, dry_run, model=None, tokenizer=None):
     rows = []
+    reward_config = _math_reward_config(config)
     sample_count = min(int(config["rollout"]["sample_count"]), len(examples))
     generations_per_prompt = int(config["rollout"].get("sample_rollout_generations", 1))
     selected = examples[:sample_count]
@@ -626,7 +647,7 @@ def _write_sample_rollouts(path, config, examples, dry_run, model=None, tokenize
                     config,
                     sample=generations_per_prompt > 1,
                 )
-            reward_result = score_math_boxed_v001(generation, answer, config=MathRewardConfig())
+            reward_result = score_math_boxed_v001(generation, answer, config=reward_config)
             completion_records.append(
                 {
                     "generation_index": generation_index,
@@ -891,6 +912,8 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- output path: `{resolved['output_dir']}`",
         f"- policy checkpoint path: `{resolved['output_dir']}`",
         f"- reward version: `{resolved['reward_version']}`",
+        f"- reward symbolic equivalence: `{resolved['reward']['allow_symbolic_equivalence']}`",
+        f"- reward symbolic engine: `{resolved['reward']['symbolic_equivalence_engine']}`",
         f"- final loss: `{final_loss}`",
         f"- reward mean: `{metrics['reward_mean']}`",
         f"- reward std: `{metrics['reward_std']}`",
@@ -931,6 +954,17 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
             ]
         )
     _write_text(path, "\n".join(lines) + "\n")
+
+
+def _math_reward_config(config):
+    reward = config.get("reward", {})
+    return MathRewardConfig(
+        allow_symbolic_equivalence=bool(reward.get("allow_symbolic_equivalence", False)),
+        symbolic_equivalence_engine=str(reward.get("symbolic_equivalence_engine", "fraction")),
+        max_symbolic_expr_chars=int(reward.get("max_symbolic_expr_chars", 120)),
+        max_symbolic_ast_nodes=int(reward.get("max_symbolic_ast_nodes", 64)),
+        max_symbolic_collection_size=int(reward.get("max_symbolic_collection_size", 32)),
+    )
 
 
 if __name__ == "__main__":

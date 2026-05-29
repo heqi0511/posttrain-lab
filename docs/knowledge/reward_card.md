@@ -11,8 +11,9 @@ Future reward versions must document semantics, scale, invalid-output handling, 
 - Structured API: `score_math_boxed_v001(completion, answer, config=...)`
 - Reward range: binary `0.0` or `1.0`.
 - Default symbolic equivalence: disabled.
+- Optional symbolic engines: `fraction` for the existing bounded numeric arithmetic checker, or `sympy` for `latex2sympy2` + SymPy expression equivalence.
 - Network/filesystem access: none.
-- Execution bound: completions longer than `max_output_chars` return `0.0`; symbolic equivalence uses a short, local, bounded AST evaluator.
+- Execution bound: completions longer than `max_output_chars` return `0.0`; symbolic equivalence uses local bounded parsing and rejects long expressions, large expression trees, unsupported syntax, and large collections.
 
 ### Contract
 
@@ -37,7 +38,12 @@ Before boxed-answer extraction, the parser removes complete `<think>...</think>`
 
 Normalization removes whitespace and simple LaTeX noise, including `\left`, `\right`, math delimiters, and simple `\frac{a}{b}` / `\frac12` forms. Exact normalized string match is checked first.
 
-If `allow_symbolic_equivalence=True`, the reward can also compare simple numeric arithmetic expressions such as `1/2` and `0.5`. This path is local and bounded: it rejects long expressions, unsupported characters, large ASTs, large fractions, division by zero, and large exponents.
+If `allow_symbolic_equivalence=True`, non-exact equivalence is enabled explicitly:
+
+- `symbolic_equivalence_engine: fraction` preserves the older bounded numeric arithmetic checker for cases such as `1/2` and `0.5`.
+- `symbolic_equivalence_engine: sympy` uses `latex2sympy2` plus SymPy to compare parser-compatible final expressions, including examples such as `1/2` versus `0.5`, `2(x+1)` versus `2x+2`, and unordered finite sets such as `\{1,2,3\}` versus `\{3,2,1\}`.
+
+The SymPy path is off by default. It rejects equations containing `=`, natural-language tokens, `\text{...}`, environments, unsupported characters, expressions longer than the configured limit, expression trees larger than the configured node cap, and collections larger than the configured collection cap. This is intentional because `latex2sympy2` can otherwise parse equation-like strings such as `x=1` too loosely for reward use.
 
 ### Known Reward-Hacking Risks
 
@@ -46,6 +52,7 @@ If `allow_symbolic_equivalence=True`, the reward can also compare simple numeric
 - A model may place the correct answer in reasoning and a wrong boxed final answer. Conflicting boxed answers score `0.0`.
 - A model may place the correct boxed answer in a negated sentence or candidate answer while giving a wrong unboxed final answer. The final-answer suffix check scores this `0.0` when non-punctuation text follows the boxed answer.
 - A model may exploit malformed LaTeX or parser ambiguity. Malformed boxed syntax scores `0.0`.
+- A model may exploit a symbolic parser by writing equation-like or prose-like answers. The optional SymPy engine rejects `=`, text macros, natural-language tokens, and unsupported syntax before parsing.
 - A model may output extremely long text before a boxed answer. Length above `max_output_chars` scores `0.0`.
 - A model may hide contradictory boxed answers inside closed `<think>...</think>` blocks. Those blocks are stripped before scoring, so only the visible final answer is rewarded; RLVR logs should still track completion length.
 
@@ -55,4 +62,4 @@ If `allow_symbolic_equivalence=True`, the reward can also compare simple numeric
 - Test file: `tests/test_math_reward.py`
 - Command: `make test-rewards`
 
-The adversarial fixtures cover multiple boxed answers, repeated identical boxed answers, correct boxed answers embedded before later contradictions, correct boxed candidate with wrong final answer, malformed LaTeX, long output, prompt-injection text, closed and unclosed thinking blocks, ordinary reasoning before a final boxed answer, and symbolic equivalence being disabled by default.
+The adversarial fixtures cover multiple boxed answers, repeated identical boxed answers, correct boxed answers embedded before later contradictions, correct boxed candidate with wrong final answer, malformed LaTeX, long output, prompt-injection text, closed and unclosed thinking blocks, ordinary reasoning before a final boxed answer, symbolic equivalence being disabled by default, optional SymPy equivalence, wrong algebra under SymPy, unordered set comparison, and equation-parser hacking.
