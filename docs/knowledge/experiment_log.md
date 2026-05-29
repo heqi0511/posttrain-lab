@@ -424,3 +424,22 @@ Record training and eval runs here with links to run directories, run cards, res
 - Result: parse failure rate `0.03125`, average completion length `16.94`, all-zero prompts `6/8`, all-one prompts `0/8`, mixed prompts `2/8`, effective mixed group rate `0.25`.
 - Frontier output: `2` prompts passed the tiny frontier filter and the filtered RLVR JSONL validated successfully.
 - Interpretation: the checkpoint is feasible for a very small GRPO smoke because it loads, generates concise boxed answers, and has nonzero mixed groups. It is not ready for direct larger GRPO because most sampled prompts are all-zero and would provide no within-group advantage.
+
+### 2026-05-29 Qwen3-4B SymPy-Boxed SFT
+
+- Goal: train `Qwen/Qwen3-4B` on the curated OpenR1/DeepMath SymPy-compatible boxed-answer SFT dataset, first with a small smoke run and then with a full run to convergence.
+- Code commit: `1581aadfd67af4cd1c5cc80a259146fff13ab6da`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/4affb7b-sympy-boxed-data`.
+- Dataset: `data/staged/openr1_deepmath_sympy_boxed_v1/`; train `5000`, val `500`, test `500`; no `data/raw` files were modified.
+- Data hashes: train `b9adac8b3c861177a4e805fd6ff16e623603b0077be14ebb15c446badb5b1741`; val `fd36e947110862b8b6e934a4f7ac73b1a19c15c2d59e84d8817a9b262e95505c`.
+- SymPy engine: post-train eval used `allow_symbolic_equivalence=true` and `symbolic_equivalence_engine=sympy`; reward semantics were not changed during the run.
+- Smoke config: `configs/sft/qwen3_4b_sympy_boxed_smoke.yaml`; Slurm job `6933159`, completed in `00:02:55` on RTX A5000.
+- Smoke result: final train loss `1.8372`, validation loss `1.2814`, validation generation `answer_match=0.0625`, parse failure rate `0.0`, average completion length `15.875`.
+- Full config: `configs/sft/qwen3_4b_sympy_boxed_full.yaml`; Slurm job `6933180`, completed in `01:08:31` on RTX A5000.
+- Full training settings: LoRA rank `16`, max sequence length `2048`, `1800` optimizer steps, batch size `1`, gradient accumulation `4`, learning rate `2e-5`, bf16, `enable_thinking=false`.
+- Loss curve summary: first train loss `2.8176`, last logged train loss `0.9427`, trainer final loss `0.9780`; first eval loss `1.1502`, final/best eval loss `0.8978`.
+- Validation loss kept improving slowly through the final checkpoint; best checkpoint is `runs/sft/qwen3_4b_sympy_boxed_full/checkpoint-1800`.
+- Post-train validation generation eval on `64` fixed validation prompts: `answer_match=0.15625`, parse failure rate `0.0`, average completion length `13.70` characters.
+- Run artifacts: `runs/sft/qwen3_4b_sympy_boxed_full/run_card.md`, `resolved_config.yaml`, `metrics.jsonl`, `loss_curve.csv`, `selected_checkpoint.json`, `sample_generations.jsonl`, and `eval/metrics.json`.
+- GRPO starting checkpoint: use `runs/sft/qwen3_4b_sympy_boxed_full/checkpoint-1800` as the next parent adapter unless a later heldout eval contradicts this validation-loss choice.
+- Interpretation: the run successfully stabilized concise boxed output with zero parse failures and improved validation loss, but math accuracy on this harder validation slice remains modest. The next step should be a very small no-training rollout audit or GRPO smoke from `checkpoint-1800`, with reward vectors checked before any larger RLVR run.
