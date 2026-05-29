@@ -32,7 +32,7 @@ LEAK_OR_MULTIPART_RE = re.compile(
     r"(\banswer\s*\.|questions?:|maximum and minimum values|"
     r"find the maximum and minimum|\(1\).+\(2\)|\ba\)\s|\bb\)\s|\bc\)\s|"
     r"!\[|https?://|translation preserves|translated|youth clue|figure below|"
-    r"depicted below|shown below|as shown|how many.+and how many|\bshould\b)",
+    r"depicted below|shown below|as shown|are shown|how many.+and how many|\bshould\b)",
     re.IGNORECASE,
 )
 CONTROL_REPAIRS = {
@@ -315,6 +315,7 @@ def _sanitize_target(target):
         "~": "",
         "$": "",
         "°": "",
+        ";": ",",
     }
     for old, new in replacements.items():
         target = target.replace(old, new)

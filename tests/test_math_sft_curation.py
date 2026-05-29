@@ -62,3 +62,17 @@ def test_curate_pair_standardizes_comma_list_as_set():
 
     assert decision.action == "keep"
     assert decision.clean_target == r"\boxed{\{1,2,3\}}"
+
+
+def test_curate_pair_standardizes_semicolon_list_as_set():
+    decision = curate_pair("List all values.", r"\boxed{5;6;7}")
+
+    assert decision.action == "keep"
+    assert decision.clean_target == r"\boxed{\{5,6,7\}}"
+
+
+def test_curate_pair_rejects_shown_context_problem():
+    decision = curate_pair("The last three values are shown: ____ . Find the first.", r"\boxed{1}")
+
+    assert decision.action == "reject"
+    assert decision.reason == "answer_leak_or_multipart_prompt"
