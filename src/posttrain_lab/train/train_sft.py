@@ -84,18 +84,20 @@ def run_sft(config, config_path):
             problem_style=resolved["synthetic_problem_style"],
         )
 
+    validation_data_path = Path(resolved["validation_data_path"])
     examples = load_sft_train_examples(
         data_path,
         split=resolved["selection"]["train_split"],
         limit=resolved["selection"]["max_train_examples"],
     )
     validation_examples = load_sft_examples(
-        data_path,
+        validation_data_path,
         split=resolved["selection"]["validation_split"],
         limit=resolved["selection"]["max_validation_examples"],
     )
 
     data_hash = _sha256_file(data_path)
+    validation_data_hash = _sha256_file(validation_data_path)
     config_hash = _sha256_file(config_path)
     git_commit = _git_commit()
 
@@ -153,6 +155,7 @@ def run_sft(config, config_path):
         output_dir / "run_card.md",
         resolved=resolved,
         data_hash=data_hash,
+        validation_data_hash=validation_data_hash,
         config_hash=config_hash,
         git_commit=git_commit,
         final_loss=final_loss,
@@ -173,6 +176,7 @@ def run_sft(config, config_path):
         "target_eval_score": target_eval_score,
         "average_output_length": average_output_length,
         "data_hash": data_hash,
+        "validation_data_hash": validation_data_hash,
         "config_hash": config_hash,
         "git_commit": git_commit,
     }
@@ -200,6 +204,7 @@ def _resolve_config(config):
     resolved = copy.deepcopy(config)
     resolved.setdefault("run_name", "sft-overfit32")
     resolved.setdefault("smoke_run", False)
+    resolved.setdefault("validation_data_path", resolved["data_path"])
     if "split" in resolved["selection"] and "train_split" not in resolved["selection"]:
         resolved["selection"]["train_split"] = resolved["selection"]["split"]
     resolved["selection"].setdefault("train_split", "train")
@@ -253,6 +258,7 @@ def _resolve_config(config):
     resolved["eval_after_train"].setdefault("exact_match", True)
     resolved["eval_after_train"].setdefault("boxed_math_match", False)
     resolved["eval_after_train"].setdefault("allow_symbolic_equivalence", False)
+    resolved["eval_after_train"].setdefault("symbolic_equivalence_engine", "fraction")
     resolved["eval_after_train"].setdefault("prompt_source", "file")
     resolved["eval_after_train"].setdefault("sample_size", 0)
     resolved.setdefault("synthetic_data_if_missing", False)
@@ -389,6 +395,7 @@ def _run_trl_training(config, train_examples, validation_examples, output_dir):
     _write_metrics(output_dir / "trainer_log.jsonl", trainer.state.log_history)
     _write_loss_curve(output_dir / "loss_curve.csv", trainer.state.log_history)
     _write_checkpoint_manifest(output_dir / "checkpoint_manifest.json", output_dir)
+    _write_selected_checkpoint(output_dir / "selected_checkpoint.json", trainer.state.log_history, output_dir)
     return final_loss, validation_loss, trainer.model, tokenizer
 
 
@@ -707,6 +714,7 @@ def _build_eval_config(config, output_dir):
             "format_regex": eval_config["format_regex"],
             "boxed_math_match": eval_config["boxed_math_match"],
             "allow_symbolic_equivalence": eval_config["allow_symbolic_equivalence"],
+            "symbolic_equivalence_engine": eval_config["symbolic_equivalence_engine"],
         },
     }
 
@@ -872,7 +880,7 @@ def _generation_prompt_to_text(prompt, tokenizer, enable_thinking=None):
     return prompt
 
 
-def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_loss, metrics):
+def _write_run_card(path, resolved, data_hash, validation_data_hash, config_hash, git_commit, final_loss, metrics):
     finality = "smoke, not final" if resolved["smoke_run"] else "pipeline check, not final"
     lines = [
         "# SFT Run Card",
@@ -884,6 +892,8 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- parent adapter path: `{resolved['parent_adapter_path']}`",
         f"- data path: `{resolved['data_path']}`",
         f"- data hash: `{data_hash}`",
+        f"- validation data path: `{resolved['validation_data_path']}`",
+        f"- validation data hash: `{validation_data_hash}`",
         f"- config hash: `{config_hash}`",
         f"- git commit: `{git_commit}`",
         f"- output path: `{resolved['output_dir']}`",
@@ -906,8 +916,11 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- eval max new tokens: `{resolved['eval_after_train']['max_new_tokens']}`",
         f"- eval enable thinking: `{resolved['eval_after_train']['enable_thinking']}`",
         f"- eval prompt source: `{resolved['eval_after_train']['prompt_source']}`",
+        f"- eval allow symbolic equivalence: `{resolved['eval_after_train']['allow_symbolic_equivalence']}`",
+        f"- eval symbolic equivalence engine: `{resolved['eval_after_train']['symbolic_equivalence_engine']}`",
         f"- loss curve path: `{resolved['output_dir']}/loss_curve.csv`",
         f"- checkpoint manifest path: `{resolved['output_dir']}/checkpoint_manifest.json`",
+        f"- selected checkpoint path: `{resolved['output_dir']}/selected_checkpoint.json`",
         f"- eval output path: `{resolved['eval_after_train']['output_dir']}`",
         f"- eval diff path: `{resolved['output_dir']}/eval_diff.md`",
     ]
@@ -953,6 +966,28 @@ def _write_checkpoint_manifest(path, output_dir):
     for checkpoint_dir in sorted(Path(output_dir).glob("checkpoint-*"), key=_checkpoint_step):
         checkpoints.append({"step": _checkpoint_step(checkpoint_dir), "path": str(checkpoint_dir)})
     _write_text(Path(path), json.dumps({"checkpoints": checkpoints}, indent=2, sort_keys=True) + "\n")
+
+
+def _write_selected_checkpoint(path, rows, output_dir):
+    best = None
+    for row in rows:
+        if "eval_loss" not in row:
+            continue
+        try:
+            eval_loss = float(row["eval_loss"])
+        except (TypeError, ValueError):
+            continue
+        step = int(row.get("step") or -1)
+        if best is None or eval_loss < best["eval_loss"]:
+            best = {"selection_metric": "eval_loss", "eval_loss": eval_loss, "step": step}
+
+    if best is None:
+        best = {"selection_metric": "final_adapter", "path": str(output_dir)}
+    else:
+        checkpoint_path = Path(output_dir) / f"checkpoint-{best['step']}"
+        best["path"] = str(checkpoint_path if checkpoint_path.exists() else output_dir)
+    _write_text(Path(path), json.dumps(best, indent=2, sort_keys=True) + "\n")
+    return best
 
 
 def _checkpoint_step(path):

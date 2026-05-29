@@ -5,13 +5,16 @@ import json
 from pathlib import Path
 
 from posttrain_lab.eval.metrics import exact_match, format_success, mean_boolean
-from posttrain_lab.rewards.math_reward import score_math_boxed
+from posttrain_lab.rewards.math_reward import MathRewardConfig, score_math_boxed_v001
 
 
 PARSE_FAILURE_REASONS = {
     "malformed_boxed_answer",
     "no_boxed_answer",
     "conflicting_boxed_answers",
+    "multiple_boxed_answers",
+    "empty_boxed_answer",
+    "boxed_not_final_only",
     "unclosed_think_block",
 }
 
@@ -53,14 +56,17 @@ def run_eval(config):
         parsed_answer = None
         answer_failure_reason = None
         if metrics_config.get("boxed_math_match") and "answer" in example:
-            reward = score_math_boxed(
+            reward = score_math_boxed_v001(
                 generation,
                 answer,
-                symbolic=bool(metrics_config.get("allow_symbolic_equivalence", False)),
+                config=MathRewardConfig(
+                    allow_symbolic_equivalence=bool(metrics_config.get("allow_symbolic_equivalence", False)),
+                    symbolic_equivalence_engine=str(metrics_config.get("symbolic_equivalence_engine", "fraction")),
+                ),
             )
-            answer_value = reward.reward == 1.0
-            parsed_answer = reward.parsed_answer
-            answer_failure_reason = reward.failure_reason
+            answer_value = reward.score == 1.0
+            parsed_answer = reward.normalized_prediction
+            answer_failure_reason = None if answer_value else reward.reason
             answer_values.append(answer_value)
             answer_parse_failures.append(answer_failure_reason in PARSE_FAILURE_REASONS)
 

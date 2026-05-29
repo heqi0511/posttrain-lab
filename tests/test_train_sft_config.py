@@ -14,15 +14,16 @@ from posttrain_lab.train.train_sft import (
 )
 
 
-def write_sft_jsonl(path, count):
+def write_sft_jsonl(path, count, split="train", start=0):
     with path.open("w", encoding="utf-8") as handle:
         for index in range(count):
+            value = start + index
             record = {
-                "id": f"train-{index:03d}",
-                "split": "train",
+                "id": f"{split}-{index:03d}",
+                "split": split,
                 "messages": [
-                    {"role": "user", "content": f"Compute {index} + 1."},
-                    {"role": "assistant", "content": str(index + 1)},
+                    {"role": "user", "content": f"Compute {value} + 1."},
+                    {"role": "assistant", "content": str(value + 1)},
                 ],
                 "metadata": {
                     "source": "unit-test",
@@ -131,6 +132,28 @@ def test_dry_run_writes_required_run_artifacts(tmp_path):
     assert metrics[-1]["final_loss"] == 0.0
 
 
+def test_dry_run_supports_separate_validation_data_path(tmp_path):
+    train_path = tmp_path / "train.jsonl"
+    val_path = tmp_path / "val.jsonl"
+    output_dir = tmp_path / "runs" / "sft" / "separate-val"
+    config_path = tmp_path / "separate_val.yaml"
+    write_sft_jsonl(train_path, 32, split="train")
+    write_sft_jsonl(val_path, 4, split="val", start=100)
+    write_config(config_path, train_path, output_dir)
+    text = config_path.read_text(encoding="utf-8")
+    text = text.replace(f"data_path: {train_path}", f"data_path: {train_path}\nvalidation_data_path: {val_path}")
+    text = text.replace("  max_train_examples: 32", "  max_train_examples: 32\n  max_validation_examples: 4")
+    config_path.write_text(text, encoding="utf-8")
+
+    result = run_sft(load_config(config_path), config_path=config_path)
+
+    assert result["final_loss"] == 0.0
+    assert result["data_hash"] != result["validation_data_hash"]
+    run_card = (output_dir / "run_card.md").read_text(encoding="utf-8")
+    assert f"validation data path: `{val_path}`" in run_card
+    assert "validation data hash:" in run_card
+
+
 def test_dry_run_can_create_temporary_synthetic_data_when_enabled(tmp_path):
     data_path = tmp_path / "missing" / "sft.jsonl"
     output_dir = tmp_path / "runs" / "sft" / "overfit32"
@@ -235,6 +258,28 @@ def test_qwen3_4b_openr1_format_repair_config_is_small_and_boxed_only():
     assert config["eval_after_train"]["boxed_math_match"] is True
     assert config["eval_after_train"]["exact_match"] is False
     assert config["eval_after_train"]["format_regex"] is None
+
+
+def test_qwen3_4b_sympy_boxed_configs_use_staged_data_and_sympy_eval():
+    smoke = load_config("configs/sft/qwen3_4b_sympy_boxed_smoke.yaml")
+    full = load_config("configs/sft/qwen3_4b_sympy_boxed_full.yaml")
+
+    assert smoke["model_name_or_path"] == "Qwen/Qwen3-4B"
+    assert smoke["data_path"] == "data/staged/openr1_deepmath_sympy_boxed_v1/train.jsonl"
+    assert smoke["validation_data_path"] == "data/staged/openr1_deepmath_sympy_boxed_v1/val.jsonl"
+    assert smoke["selection"]["max_train_examples"] == 256
+    assert smoke["selection"]["max_validation_examples"] == 64
+    assert smoke["smoke_run"] is True
+    assert smoke["eval_after_train"]["allow_symbolic_equivalence"] is True
+    assert smoke["eval_after_train"]["symbolic_equivalence_engine"] == "sympy"
+
+    assert full["selection"]["max_train_examples"] == 5000
+    assert full["selection"]["max_validation_examples"] == 500
+    assert full["training"]["max_steps"] == 1800
+    assert full["training"]["gradient_accumulation_steps"] == 4
+    assert full["smoke_run"] is False
+    assert full["eval_after_train"]["allow_symbolic_equivalence"] is True
+    assert full["eval_after_train"]["symbolic_equivalence_engine"] == "sympy"
 
 
 def test_validation_eval_prompt_writer_extracts_final_boxed_answers(tmp_path):
