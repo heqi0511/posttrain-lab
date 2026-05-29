@@ -180,6 +180,53 @@ Integrity notes:
 - Eval prompts, eval labels, reward semantics, and existing train/val/test fixtures are unchanged.
 - The staged JSONL must pass the strict SFT validator before training.
 
+## OpenR1/DeepMath SymPy-Boxed SFT V1
+
+Status: staged for the next Qwen3-4B SFT warmup; no training has been launched from this dataset yet.
+
+Files:
+
+- `data/staged/openr1_deepmath_sympy_boxed_v1/train.jsonl`
+- `data/staged/openr1_deepmath_sympy_boxed_v1/val.jsonl`
+- `data/staged/openr1_deepmath_sympy_boxed_v1/test.jsonl`
+- `data/staged/openr1_deepmath_sympy_boxed_v1/eval_prompts.jsonl`
+- `data/staged/openr1_deepmath_sympy_boxed_v1/manifest.json`
+
+Source:
+
+- `open-r1/OpenR1-Math-220k`, source split `train`
+- `trl-lib/DeepMath-103K`, source split `train`
+- Source ratio by split: `70%` OpenR1-Math and `30%` DeepMath
+- Source metadata is preserved in `metadata.source`; no `data/raw/` files are modified.
+
+Split policy:
+
+- Train: `5000` SFT examples
+- Validation: `500` SFT examples
+- Test/eval: `500` SFT examples plus `500` eval prompt rows derived from the heldout test split
+- Deterministic Hugging Face streaming shuffle with seed `29` and buffer size `10000`
+- Normalized prompt text is deduplicated before split assignment, so prompts do not overlap across train, validation, and test in this staged set.
+
+Filtering and target policy:
+
+- Assistant targets contain only one boxed final answer: `\boxed{...}`.
+- Targets must pass `latex2sympy2==1.9.1` parsing after sanitation.
+- Boolean answers, proof/explanation targets, answer leakage, image-dependent prompts, multipart prompts, multiple-choice letter targets, unsupported LaTeX macros, and parser failures are rejected.
+- `\dfrac` is normalized to `\frac`; units, inner dollar signs, formatting macros, and degree markers are stripped.
+- Comma- or semicolon-separated concrete answers are normalized into set-like LaTeX, such as `\boxed{\{1,2,3\}}`.
+
+Hashes:
+
+- `train.jsonl`: `b9adac8b3c861177a4e805fd6ff16e623603b0077be14ebb15c446badb5b1741`
+- `val.jsonl`: `fd36e947110862b8b6e934a4f7ac73b1a19c15c2d59e84d8817a9b262e95505c`
+- `test.jsonl`: `107929568c007e0dcf716515428272877011b3cdd9deef584da58879312682b9`
+- `eval_prompts.jsonl`: `c48ac905f062204a95096cf634f745a54c8e5e7901424bcbd7a6b2cf04755bc3`
+
+Validation:
+
+- `train.jsonl`, `val.jsonl`, and `test.jsonl` pass the strict project SFT JSONL validator.
+- A full parser audit over all `6000` SFT targets produced `0` `latex2sympy2` parse failures on the Nexus environment.
+
 ## Synthetic E2E Math Fixture
 
 Status: `synthetic-e2e-diverse-v2` is a toy fixture for pipeline, SFT smoke testing, and small RLVR signal checks, not a real math benchmark.

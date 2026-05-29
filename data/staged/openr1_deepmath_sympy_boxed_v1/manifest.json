@@ -1,0 +1,80 @@
+{
+  "data_raw_modified": false,
+  "dataset_version": "openr1_deepmath_sympy_boxed_v1",
+  "eval_prompt_count": 500,
+  "hashes": {
+    "eval_prompts_path": "c48ac905f062204a95096cf634f745a54c8e5e7901424bcbd7a6b2cf04755bc3",
+    "test_path": "107929568c007e0dcf716515428272877011b3cdd9deef584da58879312682b9",
+    "train_path": "b9adac8b3c861177a4e805fd6ff16e623603b0077be14ebb15c446badb5b1741",
+    "val_path": "fd36e947110862b8b6e934a4f7ac73b1a19c15c2d59e84d8817a9b262e95505c"
+  },
+  "max_source_records": 250000,
+  "openr1_ratio": 0.7,
+  "parser": {
+    "name": "latex2sympy2",
+    "version": "1.9.1"
+  },
+  "parser_required": true,
+  "paths": {
+    "eval_prompts_path": "data/staged/openr1_deepmath_sympy_boxed_v1/eval_prompts.jsonl",
+    "test_path": "data/staged/openr1_deepmath_sympy_boxed_v1/test.jsonl",
+    "train_path": "data/staged/openr1_deepmath_sympy_boxed_v1/train.jsonl",
+    "val_path": "data/staged/openr1_deepmath_sympy_boxed_v1/val.jsonl"
+  },
+  "reject_counts": {
+    "open-r1/OpenR1-Math-220k: answer_leak_or_multipart_prompt": 1629,
+    "open-r1/OpenR1-Math-220k: boolean_target": 15,
+    "open-r1/OpenR1-Math-220k: duplicate_problem": 1,
+    "open-r1/OpenR1-Math-220k: formatting_or_environment_target": 36,
+    "open-r1/OpenR1-Math-220k: latex2sympy_parse_failure": 459,
+    "open-r1/OpenR1-Math-220k: logical_word_target": 165,
+    "open-r1/OpenR1-Math-220k: multiple_choice_letter_target": 78,
+    "open-r1/OpenR1-Math-220k: non_standard_or_abstract_prompt": 4,
+    "open-r1/OpenR1-Math-220k: problem_too_long": 75,
+    "open-r1/OpenR1-Math-220k: proof_or_boolean_prompt": 117,
+    "open-r1/OpenR1-Math-220k: target_too_long": 8,
+    "open-r1/OpenR1-Math-220k: unsupported_macro_target": 457,
+    "open-r1/OpenR1-Math-220k: uppercase_text_target": 194,
+    "open-r1/OpenR1-Math-220k: word_like_target": 17,
+    "trl-lib/DeepMath-103K: answer_leak_or_multipart_prompt": 102,
+    "trl-lib/DeepMath-103K: boolean_target": 310,
+    "trl-lib/DeepMath-103K: duplicate_problem": 1,
+    "trl-lib/DeepMath-103K: formatting_or_environment_target": 1,
+    "trl-lib/DeepMath-103K: latex2sympy_parse_failure": 69,
+    "trl-lib/DeepMath-103K: logical_word_target": 1,
+    "trl-lib/DeepMath-103K: multiple_choice_letter_target": 61,
+    "trl-lib/DeepMath-103K: non_standard_or_abstract_prompt": 59,
+    "trl-lib/DeepMath-103K: problem_too_long": 7,
+    "trl-lib/DeepMath-103K: proof_or_boolean_prompt": 268,
+    "trl-lib/DeepMath-103K: unsupported_macro_target": 180,
+    "trl-lib/DeepMath-103K: uppercase_text_target": 61,
+    "trl-lib/DeepMath-103K: word_like_target": 6
+  },
+  "schema": "posttrain_lab SFT JSONL",
+  "seed": 29,
+  "shuffle_buffer_size": 10000,
+  "source_counts_by_split": {
+    "test": {
+      "open-r1/OpenR1-Math-220k": 350,
+      "trl-lib/DeepMath-103K": 150
+    },
+    "train": {
+      "open-r1/OpenR1-Math-220k": 3500,
+      "trl-lib/DeepMath-103K": 1500
+    },
+    "val": {
+      "open-r1/OpenR1-Math-220k": 350,
+      "trl-lib/DeepMath-103K": 150
+    }
+  },
+  "sources": [
+    "open-r1/OpenR1-Math-220k",
+    "trl-lib/DeepMath-103K"
+  ],
+  "split_counts": {
+    "test": 500,
+    "train": 5000,
+    "val": 500
+  },
+  "target_policy": "assistant message contains exactly one sanitized boxed parser-compatible final answer"
+}
