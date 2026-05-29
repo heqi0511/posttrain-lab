@@ -443,3 +443,19 @@ Record training and eval runs here with links to run directories, run cards, res
 - Run artifacts: `runs/sft/qwen3_4b_sympy_boxed_full/run_card.md`, `resolved_config.yaml`, `metrics.jsonl`, `loss_curve.csv`, `selected_checkpoint.json`, `sample_generations.jsonl`, and `eval/metrics.json`.
 - GRPO starting checkpoint: use `runs/sft/qwen3_4b_sympy_boxed_full/checkpoint-1800` as the next parent adapter unless a later heldout eval contradicts this validation-loss choice.
 - Interpretation: the run successfully stabilized concise boxed output with zero parse failures and improved validation loss, but math accuracy on this harder validation slice remains modest. The next step should be a very small no-training rollout audit or GRPO smoke from `checkpoint-1800`, with reward vectors checked before any larger RLVR run.
+
+### 2026-05-29 Qwen3-4B SymPy-Boxed Checkpoint RLVR Audit
+
+- Goal: run a small no-training rollout audit to decide whether `Qwen/Qwen3-4B` plus the SymPy-boxed SFT adapter is suitable for the next GRPO step.
+- Code commit used on server: `49866a60ebad4ef5355b1a4f4d414e55b36c9e50`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/4affb7b-sympy-boxed-data`.
+- Parent adapter: `runs/sft/qwen3_4b_sympy_boxed_full/checkpoint-1800`.
+- Audit output path: `runs/rlvr/qwen3_4b_sympy_boxed_checkpoint_audit/`.
+- Slurm job: `6933650`, completed in `00:01:46` on RTX A5000; no trainer step was executed.
+- Prompt source: temporary RLVR JSONL converted from the SFT train split under `runs/`; `data/raw`, eval prompts, reward semantics, and train/validation/test split policy were not modified.
+- Scale: `24` train prompts, `8` sampled completions per prompt, `192` total completions, `temperature=0.9`, `top_p=0.95`, `max_new_tokens=64`, `enable_thinking=false`.
+- Reward config: `math_boxed_v001` with `allow_symbolic_equivalence=true` and `symbolic_equivalence_engine=sympy`.
+- Result: total reward mean `0.125`, reward std `0.3307`, parse failure rate `0.0`, average completion length `13.875`.
+- Prompt buckets: `17/24` all-zero, `1/24` all-one, `6/24` mixed; effective mixed group rate `0.25`.
+- Frontier filter result: `3/24` prompts kept (`12.5%` selected); the filtered RLVR JSONL validated successfully.
+- Interpretation: the checkpoint is suitable for a very small GRPO smoke because it produces stable boxed outputs and has some mixed reward groups. It is not yet suitable for direct larger GRPO on unfiltered prompts because most prompts are all-zero and provide no within-group advantage.
