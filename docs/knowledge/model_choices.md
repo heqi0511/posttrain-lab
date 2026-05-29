@@ -14,3 +14,15 @@
 - Long-context smoke policy: start with `8192` training tokens and `2048` eval/sample generation tokens before considering `16384` or `32768`.
 
 This is a small gate experiment, not a model-quality result. Larger SFT runs require a passing overfit-32 check and explicit approval.
+
+## Qwen3-4B
+
+- Hugging Face model id: `Qwen/Qwen3-4B`
+- Current role: small short-boxed SFT and GRPO-feasibility checks after Qwen3-0.6B produced too many all-zero reward groups.
+- Framework: TRL `1.5.1` with PEFT LoRA.
+- Precision: `bfloat16` on Nexus GPU nodes.
+- Adapter strategy: LoRA on attention and MLP projection modules.
+- Initial short-boxed SFT config: `configs/sft/qwen3_4b_openr1_format_repair_tiny.yaml`
+- Scale policy: keep the first run small (`512` train examples, `128` validation examples, `300` steps), select the checkpoint with minimum validation loss, then run a tiny no-training rollout audit before any GRPO trainer step.
+
+This is a capability probe for GRPO readiness, not a final model-quality run.

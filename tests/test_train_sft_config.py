@@ -214,6 +214,29 @@ def test_openr1_format_repair_config_uses_short_boxed_targets_and_parent_adapter
     assert config["eval_after_train"]["format_regex"] is None
 
 
+def test_qwen3_4b_openr1_format_repair_config_is_small_and_boxed_only():
+    config = load_config("configs/sft/qwen3_4b_openr1_format_repair_tiny.yaml")
+
+    assert config["run_name"] == "sft-qwen3-4b-openr1-format-repair-tiny"
+    assert config["model_name_or_path"] == "Qwen/Qwen3-4B"
+    assert config["dataset"]["id"] == "open-r1/Mixture-of-Thoughts"
+    assert config["dataset"]["target_format"] == "boxed_final_only"
+    assert config["selection"]["max_train_examples"] == 512
+    assert config["selection"]["max_validation_examples"] == 128
+    assert config["training"]["max_steps"] == 300
+    assert config["training"]["max_seq_length"] == 2048
+    assert config["training"]["eval_steps"] == 50
+    assert config["training"]["save_steps"] == 50
+    assert config["generation_check"]["max_new_tokens"] == 128
+    assert config["generation_check"]["enable_thinking"] is False
+    assert config["eval_after_train"]["sample_size"] == 16
+    assert config["eval_after_train"]["max_new_tokens"] == 128
+    assert config["eval_after_train"]["enable_thinking"] is False
+    assert config["eval_after_train"]["boxed_math_match"] is True
+    assert config["eval_after_train"]["exact_match"] is False
+    assert config["eval_after_train"]["format_regex"] is None
+
+
 def test_validation_eval_prompt_writer_extracts_final_boxed_answers(tmp_path):
     examples = [
         {

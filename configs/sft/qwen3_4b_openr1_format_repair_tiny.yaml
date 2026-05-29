@@ -1,0 +1,77 @@
+run_name: sft-qwen3-4b-openr1-format-repair-tiny
+model_name_or_path: Qwen/Qwen3-4B
+data_path: runs/sft/qwen3_4b_openr1_format_repair_tiny/data/sft_qwen3_4b_openr1_format_repair_tiny.jsonl
+output_dir: runs/sft/qwen3_4b_openr1_format_repair_tiny
+dry_run: false
+synthetic_data_if_missing: false
+smoke_run: true
+seed: 23
+torch_dtype: bfloat16
+trust_remote_code: false
+attn_implementation: null
+dataset:
+  id: open-r1/Mixture-of-Thoughts
+  config: math
+  split: train
+  messages_field: messages
+  source_field: source
+  domain: math
+  difficulty: mixed
+  license: source-dataset-card
+  shuffle: true
+  streaming: true
+  shuffle_buffer_size: 10000
+  target_format: boxed_final_only
+selection:
+  train_split: train
+  validation_split: val
+  max_train_examples: 512
+  max_validation_examples: 128
+training:
+  max_steps: 300
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 1
+  learning_rate: 0.00002
+  max_seq_length: 2048
+  bf16: true
+  fp16: false
+  gradient_checkpointing: true
+  warmup_steps: 20
+  logging_steps: 10
+  eval_steps: 50
+  save_steps: 50
+  save_total_limit: 6
+peft:
+  method: lora
+  qlora: false
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+generation_check:
+  max_new_tokens: 128
+  enable_thinking: false
+  random_sample_count: 12
+  prompts: []
+eval_after_train:
+  enabled: true
+  prompt_source: validation
+  sample_size: 16
+  prompt_path: runs/sft/qwen3_4b_openr1_format_repair_tiny/eval_validation_prompts.jsonl
+  output_dir: runs/sft/qwen3_4b_openr1_format_repair_tiny/eval
+  baseline_metrics_path: /tmp/posttrain_lab_eval/baseline_run/metrics.json
+  dry_run: false
+  model_name: Qwen/Qwen3-4B
+  adapter_path: runs/sft/qwen3_4b_openr1_format_repair_tiny
+  torch_dtype: bfloat16
+  trust_remote_code: false
+  apply_chat_template: true
+  enable_thinking: false
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 128
+  exact_match: false
+  boxed_math_match: true
+  allow_symbolic_equivalence: false
+  format_regex: null
