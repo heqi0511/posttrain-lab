@@ -2,7 +2,7 @@
 
 Status: baseline dry-run eval runner implemented.
 
-The eval runner reads JSONL prompts, generates outputs, writes `raw_generations.jsonl`, `metrics.json`, and `eval_report.md`, and supports exact-match plus regex-based format-success metrics.
+The eval runner reads JSONL prompts, generates outputs, writes `raw_generations.jsonl`, `metrics.json`, and `eval_report.md`, and supports exact-match, regex-based format-success, and boxed-answer math matching metrics.
 
 ## JSONL Input
 
@@ -33,6 +33,16 @@ Dry-run mode uses `mock_generation` and does not load a model. Non-dry-run mode 
 - Compare runs only when they use the same eval config and metric definitions.
 - If an eval bug is fixed, record the new eval version and do not compare it directly to older results without calling out the version change.
 - Always preserve raw generations for manual review.
+
+## OpenR1-Style Reasoning Eval
+
+For reasoning SFT runs trained on `<think>...</think>` traces, use a separate reasoning eval instead of changing the fixed final-only baseline.
+
+- Enable long generation budgets such as `max_new_tokens: 2048` for smoke runs.
+- Set `enable_thinking: true` when evaluating Qwen3/OpenR1-style reasoning behavior.
+- Score final answers with `boxed_math_match`, which extracts boxed answers from the completion and compares them against the reference answer.
+- Keep `exact_match` and strict final-only regex checks for format-contract evals; do not use them as the main math-quality metric for reasoning runs.
+- Report `answer_match`, `answer_parse_failure_rate`, `parse_failure_rate`, and completion length alongside raw generations.
 
 ## Baseline Command
 

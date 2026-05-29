@@ -5,6 +5,15 @@ import json
 from pathlib import Path
 
 from posttrain_lab.eval.metrics import exact_match, format_success, mean_boolean
+from posttrain_lab.rewards.math_reward import score_math_boxed
+
+
+PARSE_FAILURE_REASONS = {
+    "malformed_boxed_answer",
+    "no_boxed_answer",
+    "conflicting_boxed_answers",
+    "unclosed_think_block",
+}
 
 
 def run_eval(config):
@@ -21,6 +30,8 @@ def run_eval(config):
     rows = []
     exact_values = []
     format_values = []
+    answer_values = []
+    answer_parse_failures = []
 
     for example in examples:
         generation = generator.generate(example, inference_config)
@@ -38,6 +49,21 @@ def run_eval(config):
             format_value = format_success(format_regex, generation)
             format_values.append(format_value)
 
+        answer_value = None
+        parsed_answer = None
+        answer_failure_reason = None
+        if metrics_config.get("boxed_math_match") and "answer" in example:
+            reward = score_math_boxed(
+                generation,
+                answer,
+                symbolic=bool(metrics_config.get("allow_symbolic_equivalence", False)),
+            )
+            answer_value = reward.reward == 1.0
+            parsed_answer = reward.parsed_answer
+            answer_failure_reason = reward.failure_reason
+            answer_values.append(answer_value)
+            answer_parse_failures.append(answer_failure_reason in PARSE_FAILURE_REASONS)
+
         rows.append(
             {
                 "id": example.get("id"),
@@ -46,15 +72,23 @@ def run_eval(config):
                 "generation": generation,
                 "exact_match": exact_value,
                 "format_success": format_value,
+                "answer_match": answer_value,
+                "parsed_answer": parsed_answer,
+                "answer_failure_reason": answer_failure_reason,
                 "completion_length": len(generation),
             }
         )
 
+    answer_parse_failure_rate = mean_boolean(answer_parse_failures)
     metrics = {
         "count": len(rows),
         "exact_match": mean_boolean(exact_values),
         "format_success": mean_boolean(format_values),
-        "parse_failure_rate": _parse_failure_rate(rows, bool(metrics_config.get("format_regex"))),
+        "answer_match": mean_boolean(answer_values),
+        "answer_parse_failure_rate": answer_parse_failure_rate,
+        "parse_failure_rate": answer_parse_failure_rate
+        if answer_parse_failure_rate is not None
+        else _parse_failure_rate(rows, bool(metrics_config.get("format_regex"))),
         "completion_length_mean": _completion_length_mean(rows),
     }
 

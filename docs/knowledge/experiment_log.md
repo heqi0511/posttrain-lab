@@ -84,6 +84,18 @@ Record training and eval runs here with links to run directories, run cards, res
 - Manual generation check saved `20` sampled generations for review in `sample_generations.jsonl`.
 - Interpretation: this run did not show validation-loss overfitting within `1000` steps. It produced useful reasoning-style checkpoints, but it did not yet satisfy the strict concise boxed-answer eval contract needed for reward/eval comparability.
 
+### 2026-05-29 OpenR1 Long-Context Smoke Revision
+
+- New config: `configs/sft/openr1_math_1k_len8192.yaml`.
+- New command: `make sft-openr1-math-1k-long`.
+- Purpose: rerun the same OpenR1 math 1k smoke with less truncation and reasoning-compatible evaluation.
+- Training max sequence length increased from `2048` to `8192`.
+- Generation check and eval `max_new_tokens` increased from `256` to `2048`.
+- Generation check and eval set `enable_thinking: true` to match the OpenR1-style reasoning data.
+- Eval prompt source changed to the staged validation split for this run only; fixed baseline eval prompts are not modified.
+- Eval metric uses boxed-answer extraction (`boxed_math_match`) instead of full-generation exact match, while preserving raw generations for review.
+- Output path will be `runs/sft/openr1_math_1k_len8192/`, so the previous `runs/sft/openr1_math_1k/` run is not overwritten.
+
 ## Qwen3-0.6B Overfit-32
 
 - Config: `configs/sft/qwen3_0_6b_overfit32.yaml`

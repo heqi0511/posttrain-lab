@@ -11,6 +11,7 @@ from pathlib import Path
 
 from posttrain_lab.data.validate import validate_jsonl
 from posttrain_lab.eval.eval_runner import run_eval
+from posttrain_lab.rewards.math_reward import extract_boxed_answers
 
 
 REQUIRED_TOP_LEVEL = {
@@ -125,10 +126,12 @@ def run_sft(config, config_path):
             examples=examples,
         )
 
-    eval_metrics = _run_eval_after_train(resolved, output_dir)
+    eval_metrics = _run_eval_after_train(resolved, output_dir, validation_examples=validation_examples)
     average_output_length = _average_generation_length(sample_rows, eval_metrics)
     format_success = eval_metrics.get("format_success")
-    target_eval_score = eval_metrics.get("exact_match")
+    target_eval_score = eval_metrics.get("answer_match")
+    if target_eval_score is None:
+        target_eval_score = eval_metrics.get("exact_match")
     final_loss = train_loss
     _write_metrics(
         output_dir / "metrics.jsonl",
@@ -246,6 +249,10 @@ def _resolve_config(config):
     resolved["eval_after_train"].setdefault("max_new_tokens", 32)
     resolved["eval_after_train"].setdefault("format_regex", r"^\\boxed\{.+\}$")
     resolved["eval_after_train"].setdefault("exact_match", True)
+    resolved["eval_after_train"].setdefault("boxed_math_match", False)
+    resolved["eval_after_train"].setdefault("allow_symbolic_equivalence", False)
+    resolved["eval_after_train"].setdefault("prompt_source", "file")
+    resolved["eval_after_train"].setdefault("sample_size", 0)
     resolved.setdefault("synthetic_data_if_missing", False)
     resolved.setdefault("synthetic_answer_format", "plain")
     resolved.setdefault("synthetic_problem_style", "increment")
@@ -602,12 +609,18 @@ def _synthetic_math_example(index, answer_format, problem_style):
     raise ValueError(f"unsupported synthetic_answer_format: {answer_format}")
 
 
-def _run_eval_after_train(config, output_dir):
+def _run_eval_after_train(config, output_dir, validation_examples=None):
     if not config["eval_after_train"]["enabled"]:
         _write_eval_diff(output_dir / "eval_diff.md", candidate=None, baseline=None)
         return {}
 
     eval_config = _build_eval_config(config, output_dir)
+    if config["eval_after_train"].get("prompt_source") == "validation":
+        eval_config["prompt_path"] = _write_validation_eval_prompts(
+            output_dir / "eval_validation_prompts.jsonl",
+            validation_examples or [],
+            sample_size=int(config["eval_after_train"].get("sample_size") or 0),
+        )
     prompt_path = Path(eval_config["prompt_path"])
     if eval_config["dry_run"] and not prompt_path.exists():
         _write_default_eval_prompts(prompt_path)
@@ -639,8 +652,39 @@ def _build_eval_config(config, output_dir):
         "metrics": {
             "exact_match": eval_config["exact_match"],
             "format_regex": eval_config["format_regex"],
+            "boxed_math_match": eval_config["boxed_math_match"],
+            "allow_symbolic_equivalence": eval_config["allow_symbolic_equivalence"],
         },
     }
+
+
+def _write_validation_eval_prompts(path, validation_examples, sample_size):
+    rows = []
+    limit = sample_size if sample_size > 0 else len(validation_examples)
+    for example in validation_examples:
+        prompt = _example_prompt(example)
+        answer = _final_boxed_answer_from_example(example)
+        if not prompt or not answer:
+            continue
+        rows.append({"id": example["id"], "prompt": prompt, "answer": answer})
+        if len(rows) == limit:
+            break
+
+    if not rows:
+        raise ValueError("validation eval requested but no boxed answers were found in validation examples")
+
+    _write_jsonl(path, rows)
+    return str(path)
+
+
+def _final_boxed_answer_from_example(example):
+    for message in reversed(example["messages"]):
+        if message["role"] != "assistant":
+            continue
+        answers = extract_boxed_answers(message["content"])
+        if answers:
+            return answers[-1]
+    return None
 
 
 def _write_default_eval_prompts(path):
@@ -800,8 +844,14 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- train examples: `{resolved['selection']['max_train_examples']}`",
         f"- validation examples: `{resolved['selection']['max_validation_examples']}`",
         f"- max steps: `{resolved['training']['max_steps']}`",
+        f"- max sequence length: `{resolved['training']['max_seq_length']}`",
         f"- save steps: `{resolved['training']['save_steps']}`",
         f"- save total limit: `{resolved['training']['save_total_limit']}`",
+        f"- generation check max new tokens: `{resolved['generation_check']['max_new_tokens']}`",
+        f"- generation check enable thinking: `{resolved['generation_check']['enable_thinking']}`",
+        f"- eval max new tokens: `{resolved['eval_after_train']['max_new_tokens']}`",
+        f"- eval enable thinking: `{resolved['eval_after_train']['enable_thinking']}`",
+        f"- eval prompt source: `{resolved['eval_after_train']['prompt_source']}`",
         f"- loss curve path: `{resolved['output_dir']}/loss_curve.csv`",
         f"- checkpoint manifest path: `{resolved['output_dir']}/checkpoint_manifest.json`",
         f"- eval output path: `{resolved['eval_after_train']['output_dir']}`",

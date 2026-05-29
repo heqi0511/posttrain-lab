@@ -83,6 +83,58 @@ def test_dry_run_eval_writes_generations_metrics_and_report(tmp_path):
     assert "format_success" in report
 
 
+def test_boxed_math_match_scores_final_answer_without_exact_text_match(tmp_path):
+    prompt_path = tmp_path / "prompts.jsonl"
+    output_dir = tmp_path / "eval_run"
+    write_jsonl(
+        prompt_path,
+        [
+            {
+                "id": "math-1",
+                "prompt": "Solve 2 + 2.",
+                "answer": "4",
+                "mock_generation": "We compute 2 + 2 = 4, so the final answer is \\boxed{4}.",
+            },
+            {
+                "id": "math-2",
+                "prompt": "Solve 3 + 3.",
+                "answer": "6",
+                "mock_generation": "The answer is 6.",
+            },
+        ],
+    )
+
+    metrics = run_eval(
+        {
+            "prompt_path": str(prompt_path),
+            "output_dir": str(output_dir),
+            "dry_run": True,
+            "model_name": "dummy",
+            "inference": {
+                "temperature": 0.0,
+                "top_p": 1.0,
+                "max_new_tokens": 16,
+                "stop_tokens": [],
+            },
+            "metrics": {
+                "exact_match": False,
+                "boxed_math_match": True,
+                "allow_symbolic_equivalence": False,
+                "format_regex": None,
+            },
+        }
+    )
+
+    assert metrics["answer_match"] == 0.5
+    assert metrics["answer_parse_failure_rate"] == 0.5
+    assert metrics["parse_failure_rate"] == 0.5
+
+    generations = read_jsonl(output_dir / "raw_generations.jsonl")
+    assert generations[0]["answer_match"] is True
+    assert generations[0]["parsed_answer"] == "4"
+    assert generations[1]["answer_failure_reason"] == "no_boxed_answer"
+
+
 def test_stop_tokens_are_applied_in_dry_run(tmp_path):
     prompt_path = tmp_path / "prompts.jsonl"
     output_dir = tmp_path / "eval_run"

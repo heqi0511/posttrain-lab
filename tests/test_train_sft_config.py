@@ -3,7 +3,9 @@ from pathlib import Path
 
 from posttrain_lab.train.train_sft import (
     _convert_hf_sft_record,
+    _final_boxed_answer_from_example,
     _normalize_hf_messages,
+    _write_validation_eval_prompts,
     load_config,
     load_sft_train_examples,
     run_sft,
@@ -171,6 +173,54 @@ def test_openr1_config_parses_dataset_and_checkpoint_fields():
     assert config["training"]["save_total_limit"] == 10
     assert config["dataset"]["streaming"] is True
     assert config["dataset"]["shuffle_buffer_size"] == 10000
+
+
+def test_openr1_long_config_uses_reasoning_lengths_and_validation_eval():
+    config = load_config("configs/sft/openr1_math_1k_len8192.yaml")
+
+    assert config["run_name"] == "sft-openr1-math-1k-len8192"
+    assert config["output_dir"] == "runs/sft/openr1_math_1k_len8192"
+    assert config["training"]["max_seq_length"] == 8192
+    assert config["generation_check"]["max_new_tokens"] == 2048
+    assert config["generation_check"]["enable_thinking"] is True
+    assert config["eval_after_train"]["prompt_source"] == "validation"
+    assert config["eval_after_train"]["sample_size"] == 8
+    assert config["eval_after_train"]["max_new_tokens"] == 2048
+    assert config["eval_after_train"]["enable_thinking"] is True
+    assert config["eval_after_train"]["boxed_math_match"] is True
+    assert config["eval_after_train"]["exact_match"] is False
+    assert config["eval_after_train"]["format_regex"] is None
+
+
+def test_validation_eval_prompt_writer_extracts_final_boxed_answers(tmp_path):
+    examples = [
+        {
+            "id": "val-1",
+            "messages": [
+                {"role": "user", "content": "Compute 2 + 2."},
+                {
+                    "role": "assistant",
+                    "content": "<think>Try 5. Wrong: \\boxed{5}</think>\nFinal: \\boxed{4}",
+                },
+            ],
+        },
+        {
+            "id": "val-2",
+            "messages": [
+                {"role": "user", "content": "Compute 3 + 3."},
+                {"role": "assistant", "content": "Final: \\boxed{6}"},
+            ],
+        },
+    ]
+
+    assert _final_boxed_answer_from_example(examples[0]) == "4"
+
+    path = tmp_path / "eval_prompts.jsonl"
+    written = _write_validation_eval_prompts(path, examples, sample_size=1)
+
+    assert written == str(path)
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert rows == [{"id": "val-1", "prompt": "Compute 2 + 2.", "answer": "4"}]
 
 
 def test_hf_message_normalization_and_openr1_conversion():
