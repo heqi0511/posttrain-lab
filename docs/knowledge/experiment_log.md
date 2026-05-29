@@ -351,3 +351,23 @@ Record training and eval runs here with links to run directories, run cards, res
 - Post-train validation generation eval: `answer_match=0.0`, `answer_parse_failure_rate=0.875`, `completion_length_mean=5493.75` characters across `8` validation prompts.
 - Failure diagnosis: `7/8` eval generations had `unclosed_think_block` under `max_new_tokens=2048`; `1/8` parsed but had an answer mismatch. The main remaining issue is long-thinking truncation/format closure, not SFT trainer execution.
 - Manual-review samples: `20` random generations saved; character length range `3203` to `9189`, mean `5694.8`.
+
+### 2026-05-29 OpenR1 Qwen3-0.6B Format-Repair SFT
+
+- Goal: continue from the long-context OpenR1 SFT adapter and teach concise final-only boxed outputs before GRPO.
+- Config: `configs/sft/openr1_math_format_repair_1k.yaml`.
+- Command: `make sft-openr1-format-repair` via Slurm script `scripts/slurm/run_sft_config.sh`.
+- Code commit: `ae9054adbac32cbe335aa8627c4b4779380d6d31`.
+- Slurm job: `6932546` on `cbcb-heng`, RTX A5000, completed successfully in `00:05:40`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/ae9054a-openr1-format-repair-sft`.
+- Output path: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/ae9054a-openr1-format-repair-sft/runs/sft/openr1_math_format_repair_1k/`.
+- Parent adapter: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/a105ae2-openr1-sft-long-cache/runs/sft/openr1_math_1k_len8192/checkpoint-1000`.
+- Data source: same `open-r1/Mixture-of-Thoughts`, `math` config, streamed `train` split, seed `17`; staged as `1000` train and `128` validation examples.
+- Target conversion: source assistant reasoning is rewritten to one assistant message containing only the visible final `\boxed{...}` answer. This did not modify raw data, eval prompts, reward semantics, or train/validation/test split policy.
+- Training settings: `500` steps, max sequence length `2048`, LoRA continuation, `enable_thinking=false` for generation and eval, eval `max_new_tokens=256`.
+- Train loss summary: first logged loss `2.099`, trainer final loss `1.206`, last logged step loss `1.198`.
+- Validation loss curve by checkpoint: `50=1.2236`, `100=1.2116`, `150=1.1947`, `200=1.1869`, `250=1.1820`, `300=1.1741`, `350=1.1714`, `400=1.1664`, `450=1.1652`, `500=1.1632`.
+- Post-train validation generation eval on `16` fixed validation prompts: `answer_match=0.125`, `answer_parse_failure_rate=0.0`, average completion length `15.56` characters.
+- Manual-review samples: `20` random generations saved; `19/20` had a parseable boxed answer. One sample emitted an overlong unclosed boxed number, so the next GRPO step should keep parse-failure and output-length gates.
+- Checkpoint retained for next GRPO: `checkpoint-500`, because it had the best validation loss and final eval had zero parse failures. The root adapter at `runs/sft/openr1_math_format_repair_1k/` is equivalent to the final saved adapter for loading, but `checkpoint-500` is the explicit immutable selection.
+- Interpretation: this run fixed the main format/truncation problem from the long SFT run, improving parse failure from `0.875` to `0.0` on validation eval and reducing average eval output length from about `5494` characters to `15.56`. It did not solve math accuracy on the harder OpenR1 validation slice; most wrong cases are short parseable boxed guesses. GRPO should treat this as a format-stabilized policy, not a strong math policy.
