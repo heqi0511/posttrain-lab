@@ -99,9 +99,14 @@ def run_variant(config, variant_name):
 
     model, tokenizer = load_model(config)
     started_at = time.time()
-    rows = []
+    rows = load_existing_completions(output_dir / "completions.jsonl", variant_name)
+    completed_prompt_ids = completed_prompt_ids_from_rows(rows, int(config["num_generations"]))
+    if rows:
+        print(f"resuming {variant_name}: loaded {len(rows)} completions for {len(completed_prompt_ids)} prompts")
     try:
         for prompt_index, prompt_record in enumerate(prompts):
+            if prompt_record["id"] in completed_prompt_ids:
+                continue
             completions = sample_completions(
                 model=model,
                 tokenizer=tokenizer,
@@ -164,6 +169,28 @@ def flush_variant_outputs(output_dir, rows, prompts, config, variant_name, varia
     )
     write_json(output_dir / "summary.json", summary)
     write_examples(output_dir / "examples.md", rows, max_examples=20)
+
+
+def load_existing_completions(path, variant_name):
+    path = Path(path)
+    if not path.exists():
+        return []
+    rows = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if row.get("variant") == variant_name:
+                rows.append(row)
+    return rows
+
+
+def completed_prompt_ids_from_rows(rows, num_generations):
+    counts = {}
+    for row in rows:
+        counts[row["id"]] = counts.get(row["id"], 0) + 1
+    return {prompt_id for prompt_id, count in counts.items() if count >= num_generations}
 
 
 def merge_reports(config):
