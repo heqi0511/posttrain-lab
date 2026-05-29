@@ -143,6 +143,42 @@ Full pilot audit settings:
 - Frontier filter: `0.2 <= reward_mean <= 0.8`, `parse_failure_rate <= 0.2`, `unique_answer_count >= 3`.
 - The audit is inference-only and must not execute trainer steps.
 
+## OpenR1 SFT Staging
+
+Status: OpenR1 math SFT staging is configured for a small real SFT run; no OpenR1 raw data is committed.
+
+Config:
+
+- `configs/sft/openr1_math_1k.yaml`
+
+Source:
+
+- Dataset: `open-r1/Mixture-of-Thoughts`
+- Config: `math`
+- Source split: `train`
+- Staged output: `runs/sft/openr1_math_1k/data/sft_openr1_math_1k.jsonl`
+- Manifest: `runs/sft/openr1_math_1k/data/sft_openr1_math_1k.manifest.json`
+
+Split policy:
+
+- Deterministically shuffle source records with the SFT config seed.
+- Stage the first `1000` usable records as train.
+- Stage the next `128` usable records as validation.
+- Do not use OpenR1 records for eval prompts in this step.
+
+Schema mapping:
+
+- Source `messages` is normalized to project SFT `messages`.
+- Source `source` is stored in `metadata.source` when present.
+- Metadata uses `domain: math`, `difficulty: mixed`, and `license: source-dataset-card`.
+- Records that do not normalize to user/assistant chat messages are skipped and counted in the manifest.
+
+Integrity notes:
+
+- `data/raw/` remains unchanged.
+- Eval prompts, eval labels, reward semantics, and existing train/val/test fixtures are unchanged.
+- The staged JSONL must pass the strict SFT validator before training.
+
 ## Synthetic E2E Math Fixture
 
 Status: `synthetic-e2e-diverse-v2` is a toy fixture for pipeline, SFT smoke testing, and small RLVR signal checks, not a real math benchmark.

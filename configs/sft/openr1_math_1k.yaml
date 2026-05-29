@@ -1,0 +1,69 @@
+run_name: sft-openr1-math-1k
+model_name_or_path: Qwen/Qwen3-0.6B
+data_path: runs/sft/openr1_math_1k/data/sft_openr1_math_1k.jsonl
+output_dir: runs/sft/openr1_math_1k
+dry_run: false
+synthetic_data_if_missing: false
+smoke_run: true
+seed: 17
+torch_dtype: bfloat16
+trust_remote_code: false
+attn_implementation: null
+dataset:
+  id: open-r1/Mixture-of-Thoughts
+  config: math
+  split: train
+  messages_field: messages
+  source_field: source
+  domain: math
+  difficulty: mixed
+  license: source-dataset-card
+  shuffle: true
+selection:
+  train_split: train
+  validation_split: val
+  max_train_examples: 1000
+  max_validation_examples: 128
+training:
+  max_steps: 1000
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 1
+  learning_rate: 0.00005
+  max_seq_length: 2048
+  bf16: true
+  fp16: false
+  gradient_checkpointing: true
+  warmup_steps: 50
+  logging_steps: 10
+  eval_steps: 100
+  save_steps: 100
+  save_total_limit: 10
+peft:
+  method: lora
+  qlora: false
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.0
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+generation_check:
+  max_new_tokens: 256
+  enable_thinking: false
+  random_sample_count: 20
+  prompts: []
+eval_after_train:
+  enabled: true
+  prompt_path: /tmp/posttrain_lab_eval/baseline_prompts.jsonl
+  output_dir: runs/sft/openr1_math_1k/eval
+  baseline_metrics_path: /tmp/posttrain_lab_eval/baseline_run/metrics.json
+  dry_run: false
+  model_name: Qwen/Qwen3-0.6B
+  adapter_path: runs/sft/openr1_math_1k
+  torch_dtype: bfloat16
+  trust_remote_code: false
+  apply_chat_template: true
+  enable_thinking: false
+  temperature: 0.0
+  top_p: 1.0
+  max_new_tokens: 256
+  exact_match: true
+  format_regex: ^\\boxed\{.+\}$

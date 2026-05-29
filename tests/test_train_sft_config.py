@@ -2,6 +2,8 @@ import json
 from pathlib import Path
 
 from posttrain_lab.train.train_sft import (
+    _convert_hf_sft_record,
+    _normalize_hf_messages,
     load_config,
     load_sft_train_examples,
     run_sft,
@@ -156,3 +158,41 @@ def test_synthetic_data_can_use_boxed_addition_format(tmp_path):
     first_record = json.loads(data_path.read_text(encoding="utf-8").splitlines()[0])
     assert "boxed format" in first_record["messages"][0]["content"]
     assert first_record["messages"][1]["content"].startswith(r"\boxed{")
+
+
+def test_openr1_config_parses_dataset_and_checkpoint_fields():
+    config = load_config("configs/sft/openr1_math_1k.yaml")
+
+    assert config["dataset"]["id"] == "open-r1/Mixture-of-Thoughts"
+    assert config["dataset"]["config"] == "math"
+    assert config["selection"]["max_train_examples"] == 1000
+    assert config["selection"]["max_validation_examples"] == 128
+    assert config["training"]["save_steps"] == 100
+    assert config["training"]["save_total_limit"] == 10
+
+
+def test_hf_message_normalization_and_openr1_conversion():
+    record = {
+        "messages": [
+            {"role": "user", "content": "Solve 2 + 2."},
+            {"role": "assistant", "content": "The answer is 4."},
+        ],
+        "source": "open-r1/OpenR1-Math-220k",
+    }
+    dataset_config = {
+        "id": "open-r1/Mixture-of-Thoughts",
+        "config": "math",
+        "messages_field": "messages",
+        "source_field": "source",
+        "domain": "math",
+        "difficulty": "mixed",
+        "license": "source-dataset-card",
+    }
+
+    assert _normalize_hf_messages(record["messages"]) == record["messages"]
+    converted = _convert_hf_sft_record(record, dataset_config, "train", 0, 7)
+
+    assert converted["id"] == "openr1-math-train-000000"
+    assert converted["split"] == "train"
+    assert converted["messages"][1]["role"] == "assistant"
+    assert converted["metadata"]["source"] == "open-r1/OpenR1-Math-220k"

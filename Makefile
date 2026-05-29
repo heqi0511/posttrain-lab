@@ -1,4 +1,4 @@
-.PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline eval-math-dataset-dry sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
+.PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline eval-math-dataset-dry sft-smoke sft-openr1-math-1k sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
 PYTHON ?= python3
 RUN_FRONTIER_AUDIT ?= 0
 
@@ -40,6 +40,9 @@ eval-math-dataset-dry:
 
 sft-smoke: eval-baseline
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_sft --config configs/sft/smoke_1k.yaml
+
+sft-openr1-math-1k: eval-baseline
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_sft --config configs/sft/openr1_math_1k.yaml
 
 sft-overfit32:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_sft --config configs/sft/overfit32.yaml

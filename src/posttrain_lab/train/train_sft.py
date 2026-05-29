@@ -2,6 +2,7 @@
 
 import argparse
 import copy
+import csv
 import hashlib
 import json
 import random
@@ -69,6 +70,9 @@ def run_sft(config, config_path):
     data_path = Path(resolved["data_path"])
     output_dir = Path(resolved["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    if resolved.get("dataset", {}).get("id") and not data_path.exists():
+        _write_hf_sft_jsonl(data_path, resolved)
 
     if resolved.get("synthetic_data_if_missing") and not data_path.exists():
         _write_synthetic_sft_jsonl(
@@ -245,6 +249,16 @@ def _resolve_config(config):
     resolved.setdefault("synthetic_data_if_missing", False)
     resolved.setdefault("synthetic_answer_format", "plain")
     resolved.setdefault("synthetic_problem_style", "increment")
+    resolved.setdefault("dataset", {})
+    resolved["dataset"].setdefault("id", "")
+    resolved["dataset"].setdefault("config", None)
+    resolved["dataset"].setdefault("split", "train")
+    resolved["dataset"].setdefault("messages_field", "messages")
+    resolved["dataset"].setdefault("source_field", "source")
+    resolved["dataset"].setdefault("domain", resolved["dataset"].get("config") or "unknown")
+    resolved["dataset"].setdefault("difficulty", "unknown")
+    resolved["dataset"].setdefault("license", "source-dataset-card")
+    resolved["dataset"].setdefault("shuffle", True)
     if resolved["run_name"] == "sft-overfit32" and resolved["selection"]["max_train_examples"] != 32:
         raise ValueError("overfit-32 requires selection.max_train_examples == 32")
     return resolved
@@ -354,6 +368,8 @@ def _run_trl_training(config, train_examples, validation_examples, output_dir):
     final_loss = float(result.training_loss)
     validation_loss = _last_metric(trainer.state.log_history, "eval_loss")
     _write_metrics(output_dir / "trainer_log.jsonl", trainer.state.log_history)
+    _write_loss_curve(output_dir / "loss_curve.csv", trainer.state.log_history)
+    _write_checkpoint_manifest(output_dir / "checkpoint_manifest.json", output_dir)
     return final_loss, validation_loss, trainer.model, tokenizer
 
 
@@ -442,6 +458,113 @@ def _write_synthetic_sft_jsonl(path, train_count, validation_count, answer_forma
             }
         )
     _write_jsonl(path, rows)
+
+
+def _write_hf_sft_jsonl(path, config):
+    dataset_config = config["dataset"]
+    dataset_id = dataset_config["id"]
+    if not dataset_id:
+        raise ValueError("dataset.id is required when dataset is configured")
+
+    try:
+        from datasets import load_dataset
+    except ImportError as exc:
+        raise RuntimeError("datasets is required to materialize Hugging Face SFT data") from exc
+
+    total_needed = int(config["selection"]["max_train_examples"]) + int(config["selection"]["max_validation_examples"])
+    if total_needed <= 0:
+        raise ValueError("at least one train or validation example is required")
+
+    load_kwargs = {}
+    if dataset_config["config"]:
+        load_kwargs["name"] = dataset_config["config"]
+    dataset = load_dataset(dataset_id, split=dataset_config["split"], **load_kwargs)
+    if dataset_config["shuffle"]:
+        dataset = dataset.shuffle(seed=int(config["seed"]))
+
+    rows = []
+    skipped = 0
+    for source_index, record in enumerate(dataset):
+        split = "train" if len(rows) < int(config["selection"]["max_train_examples"]) else "val"
+        converted = _convert_hf_sft_record(record, dataset_config, split, len(rows), source_index)
+        if converted is None:
+            skipped += 1
+            continue
+        rows.append(converted)
+        if len(rows) == total_needed:
+            break
+
+    if len(rows) != total_needed:
+        raise ValueError(f"expected {total_needed} usable SFT records from {dataset_id}, found {len(rows)}")
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_jsonl(path, rows)
+    _write_text(
+        path.with_suffix(".manifest.json"),
+        json.dumps(
+            {
+                "dataset_id": dataset_id,
+                "dataset_config": dataset_config["config"],
+                "source_split": dataset_config["split"],
+                "seed": int(config["seed"]),
+                "shuffle": bool(dataset_config["shuffle"]),
+                "train_examples": int(config["selection"]["max_train_examples"]),
+                "validation_examples": int(config["selection"]["max_validation_examples"]),
+                "skipped_records": skipped,
+                "output_path": str(path),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+    )
+
+
+def _convert_hf_sft_record(record, dataset_config, split, row_index, source_index):
+    messages = _normalize_hf_messages(record.get(dataset_config["messages_field"]))
+    if not messages or not any(message["role"] == "assistant" for message in messages):
+        return None
+
+    source = record.get(dataset_config["source_field"]) or dataset_config["id"]
+    return {
+        "id": f"openr1-{dataset_config['config'] or 'default'}-{split}-{row_index:06d}",
+        "split": split,
+        "messages": messages,
+        "metadata": {
+            "source": str(source),
+            "domain": str(dataset_config["domain"]),
+            "difficulty": str(dataset_config["difficulty"]),
+            "license": str(dataset_config["license"]),
+        },
+    }
+
+
+def _normalize_hf_messages(messages):
+    if not isinstance(messages, list) or not messages:
+        return []
+
+    normalized = []
+    for index, message in enumerate(messages):
+        if not isinstance(message, dict):
+            return []
+        role = message.get("role") or message.get("from")
+        if role == "human":
+            role = "user"
+        elif role in {"gpt", "model"}:
+            role = "assistant"
+        if role not in {"system", "user", "assistant"}:
+            if len(messages) == 2 and index == 0:
+                role = "user"
+            elif len(messages) == 2 and index == 1:
+                role = "assistant"
+            else:
+                return []
+        content = message.get("content") or message.get("value")
+        if not isinstance(content, str) or not content.strip():
+            return []
+        normalized.append({"role": role, "content": content.strip()})
+    return normalized
 
 
 def _synthetic_math_example(index, answer_format, problem_style):
@@ -662,14 +785,61 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- train examples: `{resolved['selection']['max_train_examples']}`",
         f"- validation examples: `{resolved['selection']['max_validation_examples']}`",
         f"- max steps: `{resolved['training']['max_steps']}`",
+        f"- save steps: `{resolved['training']['save_steps']}`",
+        f"- save total limit: `{resolved['training']['save_total_limit']}`",
+        f"- loss curve path: `{resolved['output_dir']}/loss_curve.csv`",
+        f"- checkpoint manifest path: `{resolved['output_dir']}/checkpoint_manifest.json`",
         f"- eval output path: `{resolved['eval_after_train']['output_dir']}`",
         f"- eval diff path: `{resolved['output_dir']}/eval_diff.md`",
     ]
+    if resolved.get("dataset", {}).get("id"):
+        lines.extend(
+            [
+                f"- source dataset: `{resolved['dataset']['id']}`",
+                f"- source dataset config: `{resolved['dataset']['config']}`",
+                f"- source dataset split: `{resolved['dataset']['split']}`",
+                f"- dataset shuffle seed: `{resolved['seed']}`",
+            ]
+        )
     _write_text(path, "\n".join(lines) + "\n")
 
 
 def _write_metrics(path, rows):
     _write_jsonl(path, rows)
+
+
+def _write_loss_curve(path, rows):
+    fields = [
+        "step",
+        "epoch",
+        "loss",
+        "eval_loss",
+        "learning_rate",
+        "grad_norm",
+        "mean_token_accuracy",
+        "eval_mean_token_accuracy",
+    ]
+    with Path(path).open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        for row in rows:
+            if "loss" not in row and "eval_loss" not in row:
+                continue
+            writer.writerow({field: row.get(field) for field in fields})
+
+
+def _write_checkpoint_manifest(path, output_dir):
+    checkpoints = []
+    for checkpoint_dir in sorted(Path(output_dir).glob("checkpoint-*"), key=_checkpoint_step):
+        checkpoints.append({"step": _checkpoint_step(checkpoint_dir), "path": str(checkpoint_dir)})
+    _write_text(Path(path), json.dumps({"checkpoints": checkpoints}, indent=2, sort_keys=True) + "\n")
+
+
+def _checkpoint_step(path):
+    try:
+        return int(Path(path).name.rsplit("-", 1)[1])
+    except (IndexError, ValueError):
+        return -1
 
 
 def _write_jsonl(path, rows):

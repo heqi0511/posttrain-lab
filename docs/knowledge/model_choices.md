@@ -9,5 +9,6 @@
 - Adapter strategy: LoRA on attention and MLP projection modules.
 - Context length for the first overfit gate: `128` tokens.
 - Run config: `configs/sft/qwen3_0_6b_overfit32.yaml`
+- OpenR1 math SFT config: `configs/sft/openr1_math_1k.yaml`
 
 This is a small gate experiment, not a model-quality result. Larger SFT runs require a passing overfit-32 check and explicit approval.
