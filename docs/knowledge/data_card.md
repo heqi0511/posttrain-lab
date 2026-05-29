@@ -49,12 +49,12 @@ make validate-data
 
 ## RLVR Frontier Prompt Audit
 
-Status: offline prompt selection tooling is available for GRPO signal checks. It samples completions before training, computes per-prompt reward statistics, and writes a schema-valid filtered RLVR train set.
+Status: offline prompt selection tooling is available for GRPO signal checks, but it is disabled by default because rollout sampling is compute-expensive. It samples completions before training, computes per-prompt reward statistics, and writes a schema-valid filtered RLVR train set only when explicitly enabled.
 
-Default command:
+Opt-in command:
 
 ```bash
-make rlvr-frontier-audit
+make rlvr-frontier-audit RUN_FRONTIER_AUDIT=1
 ```
 
 Default config: `configs/rlvr/frontier_prompt_audit.yaml`.
@@ -83,6 +83,7 @@ Filtering policy:
 
 Integrity notes:
 
+- Running `make rlvr-frontier-audit`, `make rlvr-frontier-smoke`, `make rlvr-gsm8k-scout`, or `make rlvr-gsm8k-audit` without `RUN_FRONTIER_AUDIT=1` must not sample rollouts or launch training.
 - The audit does not modify reward semantics.
 - The filtered output preserves the original RLVR record schema and validates through `make validate-data` when present.
 - Real model audits should be treated as GPU inference jobs; cache and review audit outputs before launching GRPO.
@@ -115,7 +116,7 @@ Answer parsing:
 - Commas and currency markers are removed from the verifier answer because the prompt asks the model not to use commas in boxed numeric answers.
 - Prompts ask for exactly one final `\boxed{...}` answer and no reasoning, matching `math_boxed_v001`.
 
-Pilot frontier audit configs:
+Pilot frontier audit configs are opt-in and should be treated as GPU inference jobs:
 
 - `configs/rlvr/gsm8k_frontier_scout_thinking_false.yaml`
 - `configs/rlvr/gsm8k_frontier_scout_thinking_true.yaml`

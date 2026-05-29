@@ -257,3 +257,11 @@ Record training and eval runs here with links to run directories, run cards, res
 - `current_128` result: reward_mean `0.3842`, format_success_rate `0.3983`, parse_failure_rate `0.6017`, correctness_given_parse `0.9644`, any_correct_prompt_rate `0.5533`, all_correct_prompt_rate `0.1900`, mixed_prompt_rate `0.3633`, all_zero_rate `0.4467`, avg_completion_length `328.14`, truncation_rate `0.7533`.
 - `strong_128` default-thinking result: reward_mean `0.0`, format_success_rate `0.0`, parse_failure_rate `1.0`, truncation_rate `1.0`, with `2399/2400` failures from `unclosed_think_block`.
 - Interim interpretation: `current_128` is dominated by truncation, while `strong_128` without explicit non-thinking mode triggers thinking-mode interference. The final recommendation should wait for the 512/1024 and explicit non-thinking/thinking variants.
+
+### 2026-05-29 Frontier Audit Default Disabled
+
+- Decision: pause frontier audit as a default workflow because the GSM8K/Qwen3-4B audit path is dominated by rollout inference cost and should not run accidentally during ordinary smoke work.
+- Make targets now require `RUN_FRONTIER_AUDIT=1` before running frontier rollout sampling or frontier-dependent GRPO smoke targets.
+- Affected targets: `rlvr-frontier-audit`, `rlvr-frontier-smoke`, `rlvr-gsm8k-scout-*`, and `rlvr-gsm8k-audit-*`.
+- This does not delete the audit implementation, change reward semantics, alter GSM8K conversion, modify eval prompts, or change train/validation/test split policy.
+- Current interpretation for data choice: GSM8K is useful as a sanity benchmark, but Qwen/Qwen3-4B appears too often correct once formatting and truncation are controlled, so it is a weak main source for GRPO advantage signal. Harder math data from the TRL/open-r1 style workflow should be evaluated next, with source/license/split review before adding it as training data.

@@ -1,5 +1,6 @@
 .PHONY: format lint test test-rewards test-eval validate-data check-leakage eval-baseline sft-smoke sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
 PYTHON ?= python3
+RUN_FRONTIER_AUDIT ?= 0
 
 format:
 	@echo "format placeholder: no formatter configured yet"
@@ -50,27 +51,62 @@ rlvr-smoke-qwen3:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_grpo --config configs/rlvr/qwen3_0_6b_grpo_smoke.yaml
 
 rlvr-frontier-audit:
-	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/frontier_prompt_audit.yaml
+	@if [ "$(RUN_FRONTIER_AUDIT)" != "1" ]; then \
+		echo "frontier audit is disabled by default because rollout sampling is expensive."; \
+		echo "Run 'make rlvr-frontier-audit RUN_FRONTIER_AUDIT=1' to opt in."; \
+	else \
+		PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/frontier_prompt_audit.yaml; \
+	fi
 
-rlvr-frontier-smoke: rlvr-frontier-audit
-	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_grpo --config configs/rlvr/frontier_grpo_smoke.yaml
+rlvr-frontier-smoke:
+	@if [ "$(RUN_FRONTIER_AUDIT)" != "1" ]; then \
+		echo "frontier GRPO smoke is disabled by default because it depends on frontier audit output."; \
+		echo "Run 'make rlvr-frontier-smoke RUN_FRONTIER_AUDIT=1' to opt in."; \
+	else \
+		$(MAKE) rlvr-frontier-audit RUN_FRONTIER_AUDIT=1; \
+		PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_grpo --config configs/rlvr/frontier_grpo_smoke.yaml; \
+	fi
 
 gsm8k-rlvr-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.gsm8k --output data/rlvr_prompts/gsm8k_train.jsonl --summary data/rlvr_prompts/gsm8k_train_summary.json
 
-rlvr-gsm8k-scout-thinking-false: gsm8k-rlvr-data
-	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/gsm8k_frontier_scout_thinking_false.yaml
+rlvr-gsm8k-scout-thinking-false:
+	@if [ "$(RUN_FRONTIER_AUDIT)" != "1" ]; then \
+		echo "GSM8K frontier scout is disabled by default because it runs model rollouts."; \
+		echo "Run 'make rlvr-gsm8k-scout-thinking-false RUN_FRONTIER_AUDIT=1' to opt in."; \
+	else \
+		$(MAKE) gsm8k-rlvr-data; \
+		PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/gsm8k_frontier_scout_thinking_false.yaml; \
+	fi
 
-rlvr-gsm8k-scout-thinking-true: gsm8k-rlvr-data
-	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/gsm8k_frontier_scout_thinking_true.yaml
+rlvr-gsm8k-scout-thinking-true:
+	@if [ "$(RUN_FRONTIER_AUDIT)" != "1" ]; then \
+		echo "GSM8K frontier scout is disabled by default because it runs model rollouts."; \
+		echo "Run 'make rlvr-gsm8k-scout-thinking-true RUN_FRONTIER_AUDIT=1' to opt in."; \
+	else \
+		$(MAKE) gsm8k-rlvr-data; \
+		PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/gsm8k_frontier_scout_thinking_true.yaml; \
+	fi
 
 rlvr-gsm8k-scout: rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true
 
-rlvr-gsm8k-audit-thinking-false: gsm8k-rlvr-data
-	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/gsm8k_frontier_audit_thinking_false.yaml
+rlvr-gsm8k-audit-thinking-false:
+	@if [ "$(RUN_FRONTIER_AUDIT)" != "1" ]; then \
+		echo "GSM8K frontier audit is disabled by default because it runs model rollouts."; \
+		echo "Run 'make rlvr-gsm8k-audit-thinking-false RUN_FRONTIER_AUDIT=1' to opt in."; \
+	else \
+		$(MAKE) gsm8k-rlvr-data; \
+		PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/gsm8k_frontier_audit_thinking_false.yaml; \
+	fi
 
-rlvr-gsm8k-audit-thinking-true: gsm8k-rlvr-data
-	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/gsm8k_frontier_audit_thinking_true.yaml
+rlvr-gsm8k-audit-thinking-true:
+	@if [ "$(RUN_FRONTIER_AUDIT)" != "1" ]; then \
+		echo "GSM8K frontier audit is disabled by default because it runs model rollouts."; \
+		echo "Run 'make rlvr-gsm8k-audit-thinking-true RUN_FRONTIER_AUDIT=1' to opt in."; \
+	else \
+		$(MAKE) gsm8k-rlvr-data; \
+		PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.rollout_audit --config configs/rlvr/gsm8k_frontier_audit_thinking_true.yaml; \
+	fi
 
 rlvr-gsm8k-audit: rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true
 
