@@ -10,7 +10,11 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
-from posttrain_lab.data.math_sft_curation import OPENR1_DATASET_ID, curate_pair
+from posttrain_lab.data.math_sft_curation import (
+    DEFAULT_TARGET_POLICY,
+    OPENR1_DATASET_ID,
+    curate_pair,
+)
 
 
 DEFAULT_OUTPUT_DIR = "data/rlvr_prompts/openr1_math_l2_l3_alg_nt_v1"
@@ -49,6 +53,7 @@ def main(argv=None):
     parser.add_argument("--seed", type=int, default=31)
     parser.add_argument("--shuffle-buffer-size", type=int, default=10000)
     parser.add_argument("--max-source-records", type=int, default=250000)
+    parser.add_argument("--target-policy", default=DEFAULT_TARGET_POLICY)
     parser.add_argument("--no-parser", action="store_true", help="Skip the existing latex2sympy2 curation gate.")
     args = parser.parse_args(argv)
 
@@ -67,6 +72,7 @@ def main(argv=None):
         seed=args.seed,
         shuffle_buffer_size=args.shuffle_buffer_size,
         max_source_records=args.max_source_records,
+        target_policy=args.target_policy,
         require_parser=not args.no_parser,
     )
     print(json.dumps(manifest, sort_keys=True))
@@ -88,6 +94,7 @@ def build_openr1_level_filtered_dataset(
     seed=31,
     shuffle_buffer_size=10000,
     max_source_records=250000,
+    target_policy=DEFAULT_TARGET_POLICY,
     require_parser=True,
     source_records=None,
 ):
@@ -110,6 +117,7 @@ def build_openr1_level_filtered_dataset(
         domains=domains,
         sources=sources,
         max_source_records=max_source_records,
+        target_policy=target_policy,
         require_parser=require_parser,
         reject_counts=reject_counts,
     )
@@ -149,6 +157,7 @@ def build_openr1_level_filtered_dataset(
         "seed": int(seed),
         "shuffle_buffer_size": int(shuffle_buffer_size),
         "max_source_records": int(max_source_records),
+        "target_policy_name": str(target_policy),
         "parser_required": bool(require_parser),
         "reject_counts": dict(sorted(reject_counts.items())),
         "paths": paths,
@@ -162,7 +171,11 @@ def build_openr1_level_filtered_dataset(
     manifest["hashes"]["manifest_path"] = _sha256_file(manifest_path)
 
     if sft_output_dir:
-        sft_manifest = _write_sft_split(output_dir=Path(sft_output_dir), split_prompts=split_prompts)
+        sft_manifest = _write_sft_split(
+            output_dir=Path(sft_output_dir),
+            split_prompts=split_prompts,
+            target_policy=target_policy,
+        )
         manifest["sft_output_dir"] = str(sft_output_dir)
         manifest["sft_manifest_path"] = sft_manifest["paths"]["manifest_path"]
     return manifest
@@ -175,6 +188,7 @@ def collect_filtered_prompts(
     domains=DEFAULT_DOMAINS,
     sources=DEFAULT_SOURCES,
     max_source_records=250000,
+    target_policy=DEFAULT_TARGET_POLICY,
     require_parser=True,
     reject_counts=None,
 ):
@@ -208,7 +222,12 @@ def collect_filtered_prompts(
             reject_counts["domain_not_selected"] += 1
             continue
 
-        decision = curate_pair(extracted["problem"], extracted["answer"], require_parser=require_parser)
+        decision = curate_pair(
+            extracted["problem"],
+            extracted["answer"],
+            require_parser=require_parser,
+            target_policy=target_policy,
+        )
         if decision.action != "keep":
             reject_counts[decision.reason] += 1
             continue
@@ -349,7 +368,7 @@ def _source_metadata(value):
     return f"{OPENR1_DATASET_ID}:{value}"
 
 
-def _write_sft_split(output_dir, split_prompts):
+def _write_sft_split(output_dir, split_prompts, target_policy=DEFAULT_TARGET_POLICY):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     paths = {}
@@ -366,6 +385,7 @@ def _write_sft_split(output_dir, split_prompts):
         "paths": paths,
         "hashes": {name: _sha256_file(path) for name, path in paths.items()},
         "target_policy": "assistant message contains exactly one sanitized boxed final answer",
+        "target_policy_name": str(target_policy),
         "data_raw_modified": False,
     }
     manifest_path = output_dir / "manifest.json"

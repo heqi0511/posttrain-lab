@@ -71,6 +71,50 @@ def test_curate_pair_standardizes_semicolon_list_as_set():
     assert decision.clean_target == r"\boxed{\{5,6,7\}}"
 
 
+def test_single_expression_policy_rejects_assignment_target():
+    decision = curate_pair(
+        "Find x.",
+        r"\boxed{x=1}",
+        target_policy="single_expression_no_assignment_v1",
+    )
+
+    assert decision.action == "reject"
+    assert decision.reason == "assignment_target"
+
+
+def test_single_expression_policy_rejects_subscript_assignment_target():
+    decision = curate_pair(
+        "Solve the equation.",
+        r"\boxed{\{x_1=\sqrt{3},x_2=-\sqrt{3}\}}",
+        target_policy="single_expression_no_assignment_v1",
+    )
+
+    assert decision.action == "reject"
+    assert decision.reason == "assignment_target"
+
+
+def test_single_expression_policy_rejects_plus_minus_target():
+    decision = curate_pair(
+        "Solve the equation.",
+        r"\boxed{\pm\sqrt{3}}",
+        target_policy="single_expression_no_assignment_v1",
+    )
+
+    assert decision.action == "reject"
+    assert decision.reason == "pm_target"
+
+
+def test_single_expression_policy_keeps_plain_set_target():
+    decision = curate_pair(
+        "List all values.",
+        r"\boxed{\{-\sqrt{3},\sqrt{3}\}}",
+        target_policy="single_expression_no_assignment_v1",
+    )
+
+    assert decision.action == "keep"
+    assert decision.clean_target == r"\boxed{\{-\sqrt{3},\sqrt{3}\}}"
+
+
 def test_curate_pair_rejects_shown_context_problem():
     decision = curate_pair("The last three values are shown: ____ . Find the first.", r"\boxed{1}")
 

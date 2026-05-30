@@ -303,6 +303,34 @@ Integrity notes:
 - The generated SFT and RLVR files must validate with `make validate-data` before training.
 - The SFT config `configs/sft/qwen3_4b_openr1_cn_math_sft.yaml` trains from this SFT pool and selects the best checkpoint by validation loss with early stopping.
 
+## OpenR1 CN Math Single-Expression Filter
+
+Status: target-policy filter for RLVR readiness checks. This is a derived staged dataset version built from the existing OpenR1 CN math pool, preserving original split membership.
+
+Command:
+
+```bash
+make openr1-cn-math-single-expr-data
+```
+
+Default outputs:
+
+- RLVR pool: `data/rlvr_prompts/openr1_cn_math_alg_nt_single_expr_v1/{train,val,test}.jsonl`
+- SFT pool: `data/staged/openr1_cn_math_alg_nt_single_expr_sft_v1/{train,val,test}.jsonl`
+
+Target policy:
+
+- Policy name: `single_expression_no_assignment_v1`
+- Keep plain numeric, algebraic-expression, and non-assignment set targets.
+- Reject targets containing assignment/equation `=`.
+- Reject plus-minus targets containing `\pm`, `\mp`, or `±`.
+
+Rationale:
+
+- The current `math_boxed_v001` reward is intentionally strict for assignment-like and multi-solution formats.
+- This filter avoids examples such as `x=1`, `x_1=\sqrt{3}`, `(x,y)=(2,3)`, and `\pm\sqrt{3}` until a dedicated multi-solution reward policy is designed and tested.
+- This does not modify `data/raw/`, reward semantics, eval prompts, or the source train/validation/test split policy.
+
 ## Synthetic E2E Math Fixture
 
 Status: `synthetic-e2e-diverse-v2` is a toy fixture for pipeline, SFT smoke testing, and small RLVR signal checks, not a real math benchmark.

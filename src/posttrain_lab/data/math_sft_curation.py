@@ -14,6 +14,12 @@ from pathlib import Path
 OPENR1_DATASET_ID = "open-r1/OpenR1-Math-220k"
 DEEPMATH_DATASET_ID = "trl-lib/DeepMath-103K"
 DEFAULT_OUTPUT_DIR = "data/staged/openr1_deepmath_sympy_boxed_v1"
+DEFAULT_TARGET_POLICY = "parser_compatible_boxed_final_answer"
+SINGLE_EXPRESSION_NO_ASSIGNMENT_POLICY = "single_expression_no_assignment_v1"
+TARGET_POLICIES = {
+    DEFAULT_TARGET_POLICY,
+    SINGLE_EXPRESSION_NO_ASSIGNMENT_POLICY,
+}
 
 BOOLEAN_RE = re.compile(r"^(yes|no|true|false)$", re.IGNORECASE)
 CHOICE_RE = re.compile(r"^[A-E]$", re.IGNORECASE)
@@ -89,6 +95,7 @@ def main(argv=None):
     parser.add_argument("--shuffle-buffer-size", type=int, default=10000)
     parser.add_argument("--max-source-records", type=int, default=250000)
     parser.add_argument("--eval-prompt-count", type=int, default=500)
+    parser.add_argument("--target-policy", default=DEFAULT_TARGET_POLICY)
     parser.add_argument("--no-parser", action="store_true", help="Skip latex2sympy2 parse gate.")
     args = parser.parse_args(argv)
 
@@ -102,6 +109,7 @@ def main(argv=None):
         shuffle_buffer_size=args.shuffle_buffer_size,
         max_source_records=args.max_source_records,
         eval_prompt_count=args.eval_prompt_count,
+        target_policy=args.target_policy,
         require_parser=not args.no_parser,
     )
     print(json.dumps(manifest, sort_keys=True))
@@ -118,6 +126,7 @@ def build_dataset(
     shuffle_buffer_size=10000,
     max_source_records=250000,
     eval_prompt_count=500,
+    target_policy=DEFAULT_TARGET_POLICY,
     require_parser=True,
 ):
     """Build train/val/test SFT JSONL files and heldout eval prompts."""
@@ -136,6 +145,7 @@ def build_dataset(
             seed=seed,
             shuffle_buffer_size=shuffle_buffer_size,
             max_source_records=max_source_records,
+            target_policy=target_policy,
             require_parser=require_parser,
             reject_counts=reject_counts,
         ),
@@ -145,6 +155,7 @@ def build_dataset(
             seed=seed + 1,
             shuffle_buffer_size=shuffle_buffer_size,
             max_source_records=max_source_records,
+            target_policy=target_policy,
             require_parser=require_parser,
             reject_counts=reject_counts,
         ),
@@ -195,6 +206,7 @@ def build_dataset(
         "seed": int(seed),
         "shuffle_buffer_size": int(shuffle_buffer_size),
         "max_source_records": int(max_source_records),
+        "target_policy_name": str(target_policy),
         "reject_counts": dict(sorted(reject_counts.items())),
         "paths": paths,
         "hashes": {name: _sha256_file(path) for name, path in paths.items()},
@@ -215,6 +227,7 @@ def collect_samples(
     seed,
     shuffle_buffer_size,
     max_source_records,
+    target_policy,
     require_parser,
     reject_counts,
 ):
@@ -238,7 +251,12 @@ def collect_samples(
         if raw is None:
             reject_counts[f"{source}: unsupported_record"] += 1
             continue
-        decision = curate_pair(raw["problem"], raw["answer"], require_parser=require_parser)
+        decision = curate_pair(
+            raw["problem"],
+            raw["answer"],
+            require_parser=require_parser,
+            target_policy=target_policy,
+        )
         if decision.action != "keep":
             reject_counts[f"{source}: {decision.reason}"] += 1
             continue
@@ -264,7 +282,7 @@ def collect_samples(
     return accepted
 
 
-def curate_pair(problem, target, require_parser=False):
+def curate_pair(problem, target, require_parser=False, target_policy=DEFAULT_TARGET_POLICY):
     """Filter and sanitize one math problem/target pair."""
 
     clean_problem = _clean_problem(problem)
@@ -283,6 +301,10 @@ def curate_pair(problem, target, require_parser=False):
     if clean_target is None:
         return _reject(reason)
 
+    policy_reason = target_policy_reject_reason(_unbox(clean_target), target_policy)
+    if policy_reason:
+        return _reject(policy_reason)
+
     if require_parser:
         parse_reason = _parser_reject_reason(_unbox(clean_target))
         if parse_reason:
@@ -294,6 +316,23 @@ def curate_pair(problem, target, require_parser=False):
         clean_problem=clean_problem,
         clean_target=clean_target,
     )
+
+
+def target_policy_reject_reason(target, target_policy=DEFAULT_TARGET_POLICY):
+    """Return a reject reason when a sanitized target violates a target policy."""
+
+    if target_policy not in TARGET_POLICIES:
+        raise ValueError(f"unsupported target_policy: {target_policy}")
+    if target_policy == DEFAULT_TARGET_POLICY:
+        return None
+
+    value = _strip_wrapping_box(str(target)).strip()
+    if target_policy == SINGLE_EXPRESSION_NO_ASSIGNMENT_POLICY:
+        if r"\pm" in value or r"\mp" in value or "±" in value:
+            return "pm_target"
+        if "=" in value:
+            return "assignment_target"
+    return None
 
 
 def _sanitize_target(target):
@@ -343,6 +382,8 @@ def _sanitize_target(target):
         return None, "target_too_long"
     if any(ord(char) < 32 for char in target):
         return None, "control_character_target"
+    if r"\pm" in target or r"\mp" in target or "±" in target:
+        return None, "pm_target"
 
     macros = set(re.findall(r"\\([a-zA-Z]+)", target))
     unsupported = macros - ALLOWED_MACROS
