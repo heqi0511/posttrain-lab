@@ -225,6 +225,10 @@ def _resolve_config(config):
     resolved["training"].setdefault("eval_steps", 1)
     resolved["training"].setdefault("save_steps", resolved["training"]["max_steps"])
     resolved["training"].setdefault("save_total_limit", 2)
+    resolved["training"].setdefault("early_stopping", False)
+    resolved["training"].setdefault("early_stopping_patience", 3)
+    resolved["training"].setdefault("early_stopping_threshold", 0.0)
+    resolved["training"].setdefault("load_best_model_at_end", bool(resolved["training"]["early_stopping"]))
     resolved["peft"].setdefault("method", "lora")
     resolved["peft"].setdefault("qlora", False)
     resolved["peft"].setdefault("r", 8)
@@ -304,7 +308,7 @@ def _run_trl_training(config, train_examples, validation_examples, output_dir):
     try:
         from datasets import Dataset
         from peft import LoraConfig, PeftModel, prepare_model_for_kbit_training
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from transformers import AutoModelForCausalLM, AutoTokenizer, EarlyStoppingCallback
         from trl import SFTConfig, SFTTrainer
     except ImportError as exc:
         raise RuntimeError("TRL SFT training requires transformers, datasets, trl, and peft") from exc
@@ -368,6 +372,9 @@ def _run_trl_training(config, train_examples, validation_examples, output_dir):
         eval_steps=int(config["training"]["eval_steps"]) if validation_examples else None,
         save_steps=int(config["training"]["save_steps"]),
         save_total_limit=int(config["training"]["save_total_limit"]),
+        load_best_model_at_end=bool(config["training"]["load_best_model_at_end"]) and bool(validation_examples),
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         report_to="none",
         seed=int(config["seed"]),
         bf16=bool(config["training"]["bf16"]),
@@ -386,6 +393,13 @@ def _run_trl_training(config, train_examples, validation_examples, output_dir):
     }
     if peft_config is not None:
         trainer_kwargs["peft_config"] = peft_config
+    if bool(config["training"]["early_stopping"]) and validation_examples:
+        trainer_kwargs["callbacks"] = [
+            EarlyStoppingCallback(
+                early_stopping_patience=int(config["training"]["early_stopping_patience"]),
+                early_stopping_threshold=float(config["training"]["early_stopping_threshold"]),
+            )
+        ]
     trainer = SFTTrainer(**trainer_kwargs)
     result = trainer.train()
     trainer.save_model(str(output_dir))
@@ -911,6 +925,10 @@ def _write_run_card(path, resolved, data_hash, validation_data_hash, config_hash
         f"- max sequence length: `{resolved['training']['max_seq_length']}`",
         f"- save steps: `{resolved['training']['save_steps']}`",
         f"- save total limit: `{resolved['training']['save_total_limit']}`",
+        f"- early stopping: `{resolved['training']['early_stopping']}`",
+        f"- early stopping patience: `{resolved['training']['early_stopping_patience']}`",
+        f"- early stopping threshold: `{resolved['training']['early_stopping_threshold']}`",
+        f"- load best model at end: `{resolved['training']['load_best_model_at_end']}`",
         f"- generation check max new tokens: `{resolved['generation_check']['max_new_tokens']}`",
         f"- generation check enable thinking: `{resolved['generation_check']['enable_thinking']}`",
         f"- eval max new tokens: `{resolved['eval_after_train']['max_new_tokens']}`",

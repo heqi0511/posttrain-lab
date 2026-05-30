@@ -282,6 +282,24 @@ def test_qwen3_4b_sympy_boxed_configs_use_staged_data_and_sympy_eval():
     assert full["eval_after_train"]["symbolic_equivalence_engine"] == "sympy"
 
 
+def test_qwen3_4b_openr1_cn_math_config_uses_filtered_staged_data_and_early_stop():
+    config = load_config("configs/sft/qwen3_4b_openr1_cn_math_sft.yaml")
+
+    assert config["model_name_or_path"] == "Qwen/Qwen3-4B"
+    assert config["data_path"] == "data/staged/openr1_cn_math_alg_nt_sft_v1/train.jsonl"
+    assert config["validation_data_path"] == "data/staged/openr1_cn_math_alg_nt_sft_v1/val.jsonl"
+    assert config["selection"]["max_train_examples"] == 20000
+    assert config["selection"]["max_validation_examples"] == 2000
+    assert config["training"]["max_steps"] == 6000
+    assert config["training"]["eval_steps"] == 250
+    assert config["training"]["save_steps"] == 250
+    assert config["training"]["early_stopping"] is True
+    assert config["training"]["early_stopping_patience"] == 5
+    assert config["training"]["load_best_model_at_end"] is True
+    assert config["eval_after_train"]["allow_symbolic_equivalence"] is True
+    assert config["eval_after_train"]["symbolic_equivalence_engine"] == "sympy"
+
+
 def test_validation_eval_prompt_writer_extracts_final_boxed_answers(tmp_path):
     examples = [
         {

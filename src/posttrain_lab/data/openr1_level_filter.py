@@ -1,4 +1,4 @@
-"""Stage OpenR1-Math level/domain-filtered RLVR prompts."""
+"""Stage OpenR1-Math source/domain-filtered RLVR and SFT data."""
 
 from __future__ import annotations
 
@@ -14,8 +14,10 @@ from posttrain_lab.data.math_sft_curation import OPENR1_DATASET_ID, curate_pair
 
 
 DEFAULT_OUTPUT_DIR = "data/rlvr_prompts/openr1_math_l2_l3_alg_nt_v1"
+DEFAULT_SFT_OUTPUT_DIR = ""
 DEFAULT_LEVELS = (2, 3)
 DEFAULT_DOMAINS = ("Algebra", "Number Theory")
+DEFAULT_SOURCES = ()
 BOXED_SUFFIX = "\n\nReturn only the final answer in exactly one \\boxed{...}."
 
 
@@ -27,7 +29,8 @@ class FilteredPrompt:
     problem: str
     answer: str
     domain: str
-    level: int
+    source: str
+    level: int | None
 
 
 def main(argv=None):
@@ -38,6 +41,8 @@ def main(argv=None):
     parser.add_argument("--source-split", default="train")
     parser.add_argument("--levels", default="2,3")
     parser.add_argument("--domains", default="Algebra,Number Theory")
+    parser.add_argument("--sources", default="")
+    parser.add_argument("--sft-output-dir", default=DEFAULT_SFT_OUTPUT_DIR)
     parser.add_argument("--train-count", type=int, default=5000)
     parser.add_argument("--val-count", type=int, default=500)
     parser.add_argument("--test-count", type=int, default=500)
@@ -54,6 +59,8 @@ def main(argv=None):
         source_split=args.source_split,
         levels=_parse_levels(args.levels),
         domains=_parse_domains(args.domains),
+        sources=_parse_sources(args.sources),
+        sft_output_dir=args.sft_output_dir,
         train_count=args.train_count,
         val_count=args.val_count,
         test_count=args.test_count,
@@ -73,6 +80,8 @@ def build_openr1_level_filtered_dataset(
     source_split="train",
     levels=DEFAULT_LEVELS,
     domains=DEFAULT_DOMAINS,
+    sources=DEFAULT_SOURCES,
+    sft_output_dir=DEFAULT_SFT_OUTPUT_DIR,
     train_count=5000,
     val_count=500,
     test_count=500,
@@ -80,23 +89,26 @@ def build_openr1_level_filtered_dataset(
     shuffle_buffer_size=10000,
     max_source_records=250000,
     require_parser=True,
+    source_records=None,
 ):
-    """Build level/domain-filtered RLVR train/val/test JSONL files."""
+    """Build source/domain/level-filtered RLVR and optional SFT JSONL files."""
 
     total_needed = int(train_count) + int(val_count) + int(test_count)
     reject_counts = Counter()
-    source_records = _load_openr1_records(
-        dataset_id=dataset_id,
-        dataset_config=dataset_config,
-        source_split=source_split,
-        seed=seed,
-        shuffle_buffer_size=shuffle_buffer_size,
-    )
+    if source_records is None:
+        source_records = _load_openr1_records(
+            dataset_id=dataset_id,
+            dataset_config=dataset_config,
+            source_split=source_split,
+            seed=seed,
+            shuffle_buffer_size=shuffle_buffer_size,
+        )
     prompts = collect_filtered_prompts(
         source_records,
         needed=total_needed,
         levels=levels,
         domains=domains,
+        sources=sources,
         max_source_records=max_source_records,
         require_parser=require_parser,
         reject_counts=reject_counts,
@@ -130,8 +142,9 @@ def build_openr1_level_filtered_dataset(
         "dataset_id": dataset_id,
         "dataset_config": dataset_config,
         "source_split": source_split,
-        "levels": [int(level) for level in levels],
+        "levels": [int(level) for level in levels] if levels else [],
         "domains": list(domains),
+        "sources": list(sources),
         "split_counts": {split: len(rows) for split, rows in split_prompts.items()},
         "seed": int(seed),
         "shuffle_buffer_size": int(shuffle_buffer_size),
@@ -147,6 +160,11 @@ def build_openr1_level_filtered_dataset(
     _write_text(manifest_path, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     manifest["paths"]["manifest_path"] = str(manifest_path)
     manifest["hashes"]["manifest_path"] = _sha256_file(manifest_path)
+
+    if sft_output_dir:
+        sft_manifest = _write_sft_split(output_dir=Path(sft_output_dir), split_prompts=split_prompts)
+        manifest["sft_output_dir"] = str(sft_output_dir)
+        manifest["sft_manifest_path"] = sft_manifest["paths"]["manifest_path"]
     return manifest
 
 
@@ -155,6 +173,7 @@ def collect_filtered_prompts(
     needed,
     levels=DEFAULT_LEVELS,
     domains=DEFAULT_DOMAINS,
+    sources=DEFAULT_SOURCES,
     max_source_records=250000,
     require_parser=True,
     reject_counts=None,
@@ -162,8 +181,9 @@ def collect_filtered_prompts(
     """Collect filtered, parser-compatible prompts from OpenR1-like records."""
 
     reject_counts = reject_counts if reject_counts is not None else Counter()
-    allowed_levels = {int(level) for level in levels}
+    allowed_levels = {int(level) for level in levels} if levels else None
     allowed_domains = {_normalize_label(domain) for domain in domains}
+    allowed_sources = {_normalize_label(source) for source in sources} if sources else None
     accepted = []
     seen_problem_keys = set()
 
@@ -175,10 +195,13 @@ def collect_filtered_prompts(
         if extracted is None:
             reject_counts["unsupported_record"] += 1
             continue
-        if extracted["level"] is None:
+        if allowed_sources is not None and _normalize_label(extracted["source"]) not in allowed_sources:
+            reject_counts["source_not_selected"] += 1
+            continue
+        if allowed_levels is not None and extracted["level"] is None:
             reject_counts["missing_level"] += 1
             continue
-        if int(extracted["level"]) not in allowed_levels:
+        if allowed_levels is not None and int(extracted["level"]) not in allowed_levels:
             reject_counts["level_not_selected"] += 1
             continue
         if _normalize_label(extracted["domain"]) not in allowed_domains:
@@ -201,7 +224,8 @@ def collect_filtered_prompts(
                 problem=decision.clean_problem,
                 answer=_unbox(decision.clean_target),
                 domain=extracted["domain"],
-                level=int(extracted["level"]),
+                source=extracted["source"],
+                level=int(extracted["level"]) if extracted["level"] is not None else None,
             )
         )
         if len(accepted) == int(needed):
@@ -217,11 +241,13 @@ def extract_openr1_level_record(record, source_index=0):
     if not isinstance(problem, str) or not isinstance(answer, str):
         return None
     domain = record.get("problem_type") or record.get("domain") or record.get("subject") or ""
+    source = record.get("source") or "unknown"
     return {
         "source_id": str(record.get("uuid") or f"openr1-{source_index:08d}"),
         "problem": problem,
         "answer": answer,
         "domain": str(domain),
+        "source": str(source),
         "level": _extract_level(record),
     }
 
@@ -270,8 +296,9 @@ def _parse_level(value):
 
 def _to_rlvr_record(prompt, split, index):
     domain = _canonical_domain(prompt.domain)
+    source = _source_metadata(prompt.source)
     return {
-        "id": f"openr1-l23-{_slug(domain)}-{split}-{index:06d}",
+        "id": f"openr1-{_slug(prompt.source)}-{_slug(domain)}-{split}-{index:06d}",
         "split": split,
         "prompt": [
             {
@@ -284,19 +311,25 @@ def _to_rlvr_record(prompt, split, index):
             "answer": prompt.answer,
         },
         "metadata": {
-            "source": OPENR1_DATASET_ID,
+            "source": source,
             "domain": domain,
-            "difficulty": f"level_{prompt.level}",
+            "difficulty": f"level_{prompt.level}" if prompt.level is not None else "mixed",
             "license": "source-dataset-card",
         },
     }
 
 
 def _parse_levels(value):
+    if str(value).strip().lower() in {"", "none", "null", "all"}:
+        return tuple()
     return tuple(int(item.strip()) for item in str(value).split(",") if item.strip())
 
 
 def _parse_domains(value):
+    return tuple(item.strip() for item in str(value).split(",") if item.strip())
+
+
+def _parse_sources(value):
     return tuple(item.strip() for item in str(value).split(",") if item.strip())
 
 
@@ -310,6 +343,54 @@ def _canonical_domain(value):
         if _normalize_label(domain) == normalized:
             return domain
     return str(value).strip()
+
+
+def _source_metadata(value):
+    return f"{OPENR1_DATASET_ID}:{value}"
+
+
+def _write_sft_split(output_dir, split_prompts):
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {}
+    for split, rows in split_prompts.items():
+        path = output_dir / f"{split}.jsonl"
+        _write_jsonl(path, [_to_sft_record(row, split, index) for index, row in enumerate(rows)])
+        paths[f"{split}_path"] = str(path)
+
+    manifest = {
+        "dataset_version": output_dir.name,
+        "source_rlvr_schema": "posttrain_lab RLVR JSONL",
+        "schema": "posttrain_lab SFT JSONL",
+        "split_counts": {split: len(rows) for split, rows in split_prompts.items()},
+        "paths": paths,
+        "hashes": {name: _sha256_file(path) for name, path in paths.items()},
+        "target_policy": "assistant message contains exactly one sanitized boxed final answer",
+        "data_raw_modified": False,
+    }
+    manifest_path = output_dir / "manifest.json"
+    _write_text(manifest_path, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    manifest["paths"]["manifest_path"] = str(manifest_path)
+    manifest["hashes"]["manifest_path"] = _sha256_file(manifest_path)
+    return manifest
+
+
+def _to_sft_record(prompt, split, index):
+    domain = _canonical_domain(prompt.domain)
+    return {
+        "id": f"openr1-{_slug(prompt.source)}-{_slug(domain)}-sft-{split}-{index:06d}",
+        "split": split,
+        "messages": [
+            {"role": "user", "content": prompt.problem},
+            {"role": "assistant", "content": rf"\boxed{{{prompt.answer}}}"},
+        ],
+        "metadata": {
+            "source": _source_metadata(prompt.source),
+            "domain": domain,
+            "difficulty": f"level_{prompt.level}" if prompt.level is not None else "mixed",
+            "license": "source-dataset-card",
+        },
+    }
 
 
 def _slug(value):

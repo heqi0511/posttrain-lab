@@ -1,8 +1,10 @@
-.PHONY: format lint test test-rewards test-eval validate-data validate-sympy-boxed-data build-sympy-boxed-data openr1-level-rlvr-data check-leakage eval-baseline eval-math-dataset-dry sft-smoke sft-openr1-math-1k sft-openr1-math-1k-long sft-openr1-format-repair sft-qwen3-4b-format-repair-tiny sft-qwen3-4b-sympy-boxed-smoke sft-qwen3-4b-sympy-boxed-full sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
+.PHONY: format lint test test-rewards test-eval validate-data validate-sympy-boxed-data build-sympy-boxed-data openr1-level-rlvr-data openr1-cn-math-data check-leakage eval-baseline eval-math-dataset-dry sft-smoke sft-openr1-math-1k sft-openr1-math-1k-long sft-openr1-format-repair sft-qwen3-4b-format-repair-tiny sft-qwen3-4b-sympy-boxed-smoke sft-qwen3-4b-sympy-boxed-full sft-qwen3-4b-cn-math sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
 PYTHON ?= python3
 RUN_FRONTIER_AUDIT ?= 0
 SYMPY_BOXED_DATA_DIR ?= data/staged/openr1_deepmath_sympy_boxed_v1
 OPENR1_LEVEL_RLVR_DIR ?= data/rlvr_prompts/openr1_math_l2_l3_alg_nt_v1
+OPENR1_CN_MATH_RLVR_DIR ?= data/rlvr_prompts/openr1_cn_math_alg_nt_v1
+OPENR1_CN_MATH_SFT_DIR ?= data/staged/openr1_cn_math_alg_nt_sft_v1
 
 format:
 	@echo "format placeholder: no formatter configured yet"
@@ -30,6 +32,12 @@ validate-data:
 	@if [ -f $(OPENR1_LEVEL_RLVR_DIR)/train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path $(OPENR1_LEVEL_RLVR_DIR)/train.jsonl; fi
 	@if [ -f $(OPENR1_LEVEL_RLVR_DIR)/val.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path $(OPENR1_LEVEL_RLVR_DIR)/val.jsonl; fi
 	@if [ -f $(OPENR1_LEVEL_RLVR_DIR)/test.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path $(OPENR1_LEVEL_RLVR_DIR)/test.jsonl; fi
+	@if [ -f $(OPENR1_CN_MATH_RLVR_DIR)/train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path $(OPENR1_CN_MATH_RLVR_DIR)/train.jsonl; fi
+	@if [ -f $(OPENR1_CN_MATH_RLVR_DIR)/val.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path $(OPENR1_CN_MATH_RLVR_DIR)/val.jsonl; fi
+	@if [ -f $(OPENR1_CN_MATH_RLVR_DIR)/test.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path $(OPENR1_CN_MATH_RLVR_DIR)/test.jsonl; fi
+	@if [ -f $(OPENR1_CN_MATH_SFT_DIR)/train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type sft --path $(OPENR1_CN_MATH_SFT_DIR)/train.jsonl; fi
+	@if [ -f $(OPENR1_CN_MATH_SFT_DIR)/val.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type sft --path $(OPENR1_CN_MATH_SFT_DIR)/val.jsonl; fi
+	@if [ -f $(OPENR1_CN_MATH_SFT_DIR)/test.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type sft --path $(OPENR1_CN_MATH_SFT_DIR)/test.jsonl; fi
 	@if [ -f runs/rlvr/gsm8k_frontier_audit_thinking_false/frontier_grpo_train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path runs/rlvr/gsm8k_frontier_audit_thinking_false/frontier_grpo_train.jsonl; fi
 	@if [ -f runs/rlvr/gsm8k_frontier_audit_thinking_true/frontier_grpo_train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path runs/rlvr/gsm8k_frontier_audit_thinking_true/frontier_grpo_train.jsonl; fi
 
@@ -43,6 +51,9 @@ build-sympy-boxed-data:
 
 openr1-level-rlvr-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.openr1_level_filter --output-dir $(OPENR1_LEVEL_RLVR_DIR)
+
+openr1-cn-math-data:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.openr1_level_filter --dataset-config extended --levels all --sources cn_k12,cn_contest,amc_aime --domains Algebra,Number\ Theory --output-dir $(OPENR1_CN_MATH_RLVR_DIR) --sft-output-dir $(OPENR1_CN_MATH_SFT_DIR) --train-count 20000 --val-count 2000 --test-count 2000
 
 check-leakage:
 	@echo "check-leakage placeholder: no leakage checker configured yet"
@@ -75,6 +86,9 @@ sft-qwen3-4b-sympy-boxed-smoke:
 
 sft-qwen3-4b-sympy-boxed-full:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_sft --config configs/sft/qwen3_4b_sympy_boxed_full.yaml
+
+sft-qwen3-4b-cn-math:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_sft --config configs/sft/qwen3_4b_openr1_cn_math_sft.yaml
 
 sft-overfit32:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_sft --config configs/sft/overfit32.yaml

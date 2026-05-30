@@ -260,6 +260,49 @@ Integrity notes:
 - The output must validate with `make validate-data` before use in GRPO.
 - If the source records do not expose a parseable `level` field, the script fails explicitly instead of silently weakening the filter.
 
+## OpenR1 CN Algebra/Number Theory RLVR and SFT Pool
+
+Status: staging target is configured for the next Qwen3-4B SFT and GRPO preparation run; generated JSONL files are not committed by default.
+
+Command:
+
+```bash
+make openr1-cn-math-data
+```
+
+Default outputs:
+
+- RLVR pool: `data/rlvr_prompts/openr1_cn_math_alg_nt_v1/{train,val,test}.jsonl`
+- SFT pool: `data/staged/openr1_cn_math_alg_nt_sft_v1/{train,val,test}.jsonl`
+- Manifests: `manifest.json` in each output directory
+
+Source and filters:
+
+- Dataset: `open-r1/OpenR1-Math-220k`
+- Config: `extended`
+- Source split: `train`
+- Keep only source in `{cn_k12, cn_contest, amc_aime}`
+- Keep only `problem_type in {Algebra, Number Theory}`
+- No `level` filter is applied because OpenR1-Math currently does not expose a `level` field.
+
+Default split sizes:
+
+- Train: `20000`
+- Validation: `2000`
+- Test: `2000`
+
+Target policy:
+
+- SFT assistant messages contain exactly one sanitized `\boxed{...}` final answer.
+- RLVR verifier answers use the same sanitized boxed-answer payload without the outer box.
+- Targets pass the existing parser-compatible curation gate unless `--no-parser` is explicitly used for debugging.
+
+Integrity notes:
+
+- `data/raw/`, eval prompts, reward semantics, and existing train/val/test splits are not modified.
+- The generated SFT and RLVR files must validate with `make validate-data` before training.
+- The SFT config `configs/sft/qwen3_4b_openr1_cn_math_sft.yaml` trains from this SFT pool and selects the best checkpoint by validation loss with early stopping.
+
 ## Synthetic E2E Math Fixture
 
 Status: `synthetic-e2e-diverse-v2` is a toy fixture for pipeline, SFT smoke testing, and small RLVR signal checks, not a real math benchmark.
