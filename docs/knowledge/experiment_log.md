@@ -569,3 +569,25 @@ Record training and eval runs here with links to run directories, run cards, res
 - Run artifacts synced locally: `comparison_metrics.json`, `comparison_report.md`, `metrics.jsonl`, `trainer_log.jsonl`, `run_card.md`, `sample_rollouts.jsonl`, heldout eval metrics/generations, and Slurm logs. Large checkpoint weights remain on the server scratch path.
 - No `data/raw` files, eval prompts, reward semantics, or existing train/validation/test splits were modified.
 - Interpretation: the small GRPO run technically worked and produced nonzero advantage on about half of trainer steps. Heldout answer accuracy improved slightly, but the gain is small on only `256` eval examples, so this is evidence that the setup is viable rather than proof of a robust model-quality improvement. The next run should keep the same frozen heldout comparison but increase training prompts and steps only after fixing the format-success reporting issue.
+
+### 2026-05-30 Qwen3-4B Single-Expression Medium GRPO With Heldout Comparison
+
+- Goal: increase the prior small GRPO run by one scale step, save checkpoints, and decide whether the current SFT checkpoint is suitable for further GRPO scaling.
+- Code commit used on server: `5049624a267c1984cfd3285bdd397c7280233100`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/4affb7b-sympy-boxed-data`.
+- Output path: `runs/rlvr/qwen3_4b_openr1_cn_math_single_expr_grpo_medium_v1/`.
+- Slurm job: `6938848`, completed successfully on `cbcb-heng` in `00:25:53` on RTX A5000.
+- Parent adapter: `runs/sft/qwen3_4b_openr1_cn_math_sft/checkpoint-5250`.
+- Data source: `data/rlvr_prompts/openr1_cn_math_alg_nt_single_expr_v1/`; fixed train sample `1024` prompts and fixed heldout validation sample `512` prompts, both sampled with seed `20260530`.
+- Data hashes: train `0d26027244296f400ef251c96cbfb9896a2ed94f7740399beb5437b7903ea90c`; heldout eval `c543c2f5bb8804eb05ba81001b5025e5957268df750a825c2f9e789fca83a953`.
+- GRPO settings: `300` steps, `num_generations=8`, `per_device_train_batch_size=8`, `max_completion_length=64`, `temperature=0.9`, `top_p=0.95`, `learning_rate=3e-7`, `beta=0.0`, `gradient_checkpointing=true`, `enable_thinking=false`.
+- Reward config: `math_boxed_v001` with `allow_symbolic_equivalence=true` and `symbolic_equivalence_engine=sympy`; reward semantics were not changed.
+- Checkpoints saved on server: `checkpoint-100`, `checkpoint-200`, `checkpoint-300`, plus the final root adapter under the run directory.
+- Rollout-format gate before training: reward mean `0.3594`, reward std `0.4798`, parse failure rate `0.0`, frac reward zero std `0.5625`, effective mixed group rate `0.4375`, average completion length `14.20`.
+- Trainer signal: `300/300` trainer steps logged, final loss `0.00628`, reward mean `0.33`, reward std `0.2145`, frac reward zero std `0.51`, effective mixed group rate `0.49`, nonzero grad step rate `0.49`, parse failure rate `0.0`, average completion length `8.58`.
+- Heldout eval before GRPO on the fixed `512` validation prompts: `answer_match=0.3125`, `format_success=0.9980`, parse failure rate `0.0`, average completion length `13.56`.
+- Heldout eval after GRPO on the same `512` validation prompts: `answer_match=0.3184`, `format_success=0.9980`, parse failure rate `0.0`, average completion length `13.61`.
+- Heldout delta: answer accuracy `+0.0059` absolute, format success unchanged, parse failure rate unchanged at `0.0`, average output length `+0.0449`.
+- Run artifacts synced locally: `comparison_metrics.json`, `comparison_report.md`, `metrics.jsonl`, `trainer_log.jsonl`, `run_card.md`, `sample_rollouts.jsonl`, heldout eval metrics/generations, and Slurm logs. Large adapter checkpoint weights remain on the server scratch path.
+- No `data/raw` files, eval prompts, reward semantics, or existing train/validation/test splits were modified.
+- Interpretation: the medium run is technically healthy and did not regress format, parseability, or output length. The heldout accuracy gain is positive but very small on `512` examples, so it supports one more cautious scale-up rather than a large run. The next run should keep the same parent SFT checkpoint and frozen eval protocol, increase data/steps moderately, and consider evaluating intermediate checkpoints before committing to longer GRPO.
