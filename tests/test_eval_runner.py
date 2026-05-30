@@ -7,6 +7,7 @@ import pytest
 
 from posttrain_lab.eval.eval_runner import run_eval
 from posttrain_lab.eval.metrics import exact_match, format_success
+from posttrain_lab.eval.sampled_eval import run_sampled_eval
 
 
 def write_jsonl(path, records):
@@ -185,6 +186,70 @@ def test_boxed_math_match_can_use_sympy_equivalence_engine(tmp_path):
     generations = read_jsonl(output_dir / "raw_generations.jsonl")
     assert generations[0]["answer_match"] is True
     assert generations[0]["answer_failure_reason"] is None
+
+
+def test_sampled_eval_reports_pass_at_k_and_raw_samples(tmp_path):
+    prompt_path = tmp_path / "prompts.jsonl"
+    output_dir = tmp_path / "sampled_eval"
+    write_jsonl(
+        prompt_path,
+        [
+            {
+                "id": "sampled-1",
+                "prompt": [{"role": "user", "content": "Solve 2 + 2."}],
+                "answer": "4",
+                "mock_generations": [r"\boxed{4}", r"\boxed{5}", "4", r"\boxed{4}"],
+            },
+            {
+                "id": "sampled-2",
+                "prompt": [{"role": "user", "content": "Solve 3 + 3."}],
+                "answer": "6",
+                "mock_generations": [r"\boxed{5}", r"\boxed{7}", r"\boxed{8}", r"\boxed{9}"],
+            },
+        ],
+    )
+
+    metrics = run_sampled_eval(
+        {
+            "prompt_path": str(prompt_path),
+            "output_dir": str(output_dir),
+            "dry_run": True,
+            "model_name": "dummy",
+            "seed": 123,
+            "inference": {
+                "completions_per_prompt": 4,
+                "batch_size": 4,
+                "temperature": 0.9,
+                "top_p": 0.95,
+                "top_k": 0,
+                "max_new_tokens": 16,
+                "stop_tokens": [],
+            },
+            "metrics": {
+                "boxed_math_match": True,
+                "format_regex": r"^\\boxed\{.+\}$",
+                "allow_symbolic_equivalence": False,
+                "symbolic_equivalence_engine": "fraction",
+            },
+        }
+    )
+
+    assert metrics["prompt_count"] == 2
+    assert metrics["total_completions"] == 8
+    assert metrics["sampled_accuracy"] == 0.25
+    assert metrics["pass_at_4"] == 0.5
+    assert metrics["all_zero_rate"] == 0.5
+    assert metrics["mixed_prompt_rate"] == 0.5
+    assert metrics["parse_failure_rate"] == 0.125
+    assert metrics["format_success_rate"] == 0.875
+
+    raw_rows = read_jsonl(output_dir / "sampled_generations.jsonl")
+    by_prompt = read_jsonl(output_dir / "sampled_by_prompt.jsonl")
+    assert len(raw_rows) == 8
+    assert len(by_prompt) == 2
+    assert by_prompt[0]["correct_count"] == 2
+    assert by_prompt[0]["bucket"] == "mixed"
+    assert by_prompt[1]["bucket"] == "all_zero"
 
 
 def test_stop_tokens_are_applied_in_dry_run(tmp_path):
