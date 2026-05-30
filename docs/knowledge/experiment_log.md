@@ -475,3 +475,23 @@ Record training and eval runs here with links to run directories, run cards, res
 - Post-training train-prompt sample: reward mean `0.2917`, parse failure rate `0.0`, effective mixed group rate `1.0`.
 - Small heldout eval on a fixed random sample of `32` eval prompts: SFT answer match `0.21875`; SFT+GRPO answer match `0.1875`; both had format success `0.96875` and parse failure rate `0.03125`.
 - Interpretation: the GRPO loop is technically working and provides nonzero advantage/gradient on the selected frontier prompts, but this tiny run did not improve heldout accuracy. Do not continue training longer on the same `3` prompts. The next RLVR run should use a larger and more diverse frontier set, then repeat a short GRPO smoke with heldout eval before scaling steps.
+
+### 2026-05-30 Qwen3-4B OpenR1 CN Math SFT
+
+- Goal: build a staged OpenR1 CN math Algebra/Number Theory pool and train `Qwen/Qwen3-4B` with concise boxed-answer SFT for the next RLVR stage.
+- Code commit used on server: `b85c43e51353a6d36f0b174fccf8548591571974`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/4affb7b-sympy-boxed-data`.
+- Data source: `open-r1/OpenR1-Math-220k`, config `extended`, source split `train`, sources `cn_k12`, `cn_contest`, and `amc_aime`, domains `Algebra` and `Number Theory`.
+- Staged pools: RLVR under `data/rlvr_prompts/openr1_cn_math_alg_nt_v1/`; SFT under `data/staged/openr1_cn_math_alg_nt_sft_v1/`.
+- Split counts: train `18500`, validation `2300`, test `2300`; the originally planned `20000/2000/2000` split was reduced because the strict parser-compatible filter produced `23236` usable examples.
+- Data validation: `make validate-data` passed on the generated RLVR and SFT train/validation/test JSONL files.
+- SFT config: `configs/sft/qwen3_4b_openr1_cn_math_sft.yaml`.
+- Slurm job: `6934082`, completed successfully on `cbcb-heng` in `04:14:34` on RTX A5000.
+- Training settings: LoRA rank `16`, max sequence length `2048`, `6000` optimizer steps, batch size `1`, gradient accumulation `4`, learning rate `2e-5`, bf16, `enable_thinking=false`.
+- Early stopping was enabled but did not stop the run before `max_steps`; validation loss flattened near the end rather than clearly worsening for enough evaluation windows.
+- Loss curve summary: first train loss `3.3663`, last logged train loss `0.6169`, trainer final loss `0.6099`; first eval loss `0.6675`, final eval loss `0.5744`.
+- Best validation checkpoint: `runs/sft/qwen3_4b_openr1_cn_math_sft/checkpoint-5250`, with eval loss `0.5743` and eval mean token accuracy `0.8182`.
+- Post-train validation generation eval on `64` fixed validation prompts: `answer_match=0.375`, parse failure rate `0.0`, average completion length `15.42` characters.
+- Run artifacts synced locally: `runs/sft/qwen3_4b_openr1_cn_math_sft/loss_curve.csv`, `trainer_log.jsonl`, `selected_checkpoint.json`, `metrics.jsonl`, `run_card.md`, `sample_generations.jsonl`, `eval/metrics.json`, and Slurm logs. Large adapter checkpoint weights remain on the server scratch path.
+- No `data/raw` files, eval prompts, reward semantics, or existing train/validation/test splits were modified. This run created a new staged dataset version and documented its split policy.
+- Interpretation: the run substantially reduced validation loss and produced short parseable boxed outputs, with zero parse failures on the fixed validation-generation eval. Accuracy is meaningfully higher than the previous SymPy-boxed SFT validation sample (`0.375` vs `0.15625`), but validation loss plateaued after about step `4500`; use `checkpoint-5250` as the selected checkpoint for a small GRPO feasibility audit rather than continuing SFT blindly.
