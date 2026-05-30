@@ -530,3 +530,20 @@ Record training and eval runs here with links to run directories, run cards, res
 - Audit result: reward mean `0.1458`, reward std `0.3529`, parse failure rate `0.0104`, average completion length `15.65` characters.
 - Prompt buckets: `7/24` all-zero, `4/24` all-one, `13/24` mixed; effective mixed group rate `0.5417`; frontier filter kept `7/24` prompts and the filtered frontier JSONL validated.
 - Interpretation: filtering assignment-like targets materially improved rollout usefulness compared with the prior micro audit (`mixed_rate` from `0.1667` to `0.5417`, selected prompt rate from `0.0833` to `0.2917`) while preserving low parse failures. A tiny GRPO smoke on the frontier-kept prompts is now reasonable, but a larger GRPO run should wait for a larger filtered/frontier pool and heldout comparison.
+
+### 2026-05-30 Qwen3-4B Single-Expression Frontier GRPO Smoke
+
+- Goal: run a minimal real GRPO smoke from `runs/sft/qwen3_4b_openr1_cn_math_sft/checkpoint-5250` using only the frontier prompts kept from the single-expression rollout audit.
+- Code commit used on server: `7ac6495bd1a84d293b62c05f2000246cce4dfcce`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/4affb7b-sympy-boxed-data`.
+- Output path: `runs/rlvr/qwen3_4b_openr1_cn_math_single_expr_grpo_smoke_v4/`.
+- Slurm job: `6938749`, completed successfully on `cbcb-heng` in `00:02:37` on RTX A5000.
+- Failed setup attempts: jobs `6938744`, `6938745`, and `6938746` failed before any trainer step because the temporary Slurm-side data-prep snippet had quoting/schema issues. They did not change reward semantics, eval prompts, raw data, or official splits.
+- Training data: temporary RLVR JSONL under `runs/`, made by repeating the `7` single-expression frontier prompts to `24` rows with unique IDs. The source frontier file was `runs/rlvr/qwen3_4b_openr1_cn_math_ckpt5250_single_expr_micro_audit/frontier_grpo_train.jsonl`.
+- GRPO settings: `12` steps, `num_generations=8`, `per_device_train_batch_size=8`, `max_completion_length=64`, `temperature=0.9`, `top_p=0.95`, `learning_rate=5e-7`, `beta=0.0`, `enable_thinking=false`.
+- Reward config: `math_boxed_v001` with `allow_symbolic_equivalence=true` and `symbolic_equivalence_engine=sympy`; reward semantics were not changed.
+- Rollout-format gate before training: reward mean `0.3571`, reward std `0.4792`, parse failure rate `0.0`, effective mixed group rate `0.5714`, average completion length `16.0`.
+- Trainer signal: `12/12` trainer steps logged, final loss `0.00699`, mean reward `0.4271`, reward std `0.3605`, frac reward zero std `0.25`, effective mixed group rate `0.75`, nonzero grad step rate `0.75`, parse failure rate `0.0`, average completion length `10.15`.
+- Post-training sample rollouts: `7` prompts with `8` completions each; several prompts had mixed reward vectors, such as `[1,1,1,1,0,1,0,1]`, `[1,0,1,0,1,0,1,0]`, and `[0,1,1,1,1,0,1,0]`.
+- Heldout eval was not run in this smoke. This run only confirms that the filtered frontier prompts can drive nonzero GRPO advantage and gradients.
+- Interpretation: this is the first clean 4B GRPO smoke on the single-expression filtered data. The RL loop is technically ready for a slightly larger frontier-prompt experiment, but model-quality claims still require a frozen heldout eval comparison against the SFT checkpoint.
