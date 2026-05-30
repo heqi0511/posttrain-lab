@@ -547,3 +547,24 @@ Record training and eval runs here with links to run directories, run cards, res
 - Post-training sample rollouts: `7` prompts with `8` completions each; several prompts had mixed reward vectors, such as `[1,1,1,1,0,1,0,1]`, `[1,0,1,0,1,0,1,0]`, and `[0,1,1,1,1,0,1,0]`.
 - Heldout eval was not run in this smoke. This run only confirms that the filtered frontier prompts can drive nonzero GRPO advantage and gradients.
 - Interpretation: this is the first clean 4B GRPO smoke on the single-expression filtered data. The RL loop is technically ready for a slightly larger frontier-prompt experiment, but model-quality claims still require a frozen heldout eval comparison against the SFT checkpoint.
+
+### 2026-05-30 Qwen3-4B Single-Expression Small GRPO With Heldout Comparison
+
+- Goal: run a small real GRPO experiment from `runs/sft/qwen3_4b_openr1_cn_math_sft/checkpoint-5250` and compare the frozen SFT checkpoint against SFT+GRPO on the same heldout validation sample.
+- Code commit used on server: `08ca504e9e26aa233fd21cf4a2a45739894e6622`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/4affb7b-sympy-boxed-data`.
+- Data source: `data/rlvr_prompts/openr1_cn_math_alg_nt_single_expr_v1/`; fixed train sample `256` prompts and fixed heldout validation sample `256` prompts, both sampled with seed `20260530`.
+- Parent adapter: `runs/sft/qwen3_4b_openr1_cn_math_sft/checkpoint-5250`.
+- Failed first attempt: Slurm job `6938794` ran `97/100` steps but failed with CUDA OOM before final save/eval-after. It produced only the frozen SFT before-eval result: `answer_match=0.3125`, parse failure rate `0.0`, average completion length `13.8359`.
+- Completed run: Slurm job `6938810`, output path `runs/rlvr/qwen3_4b_openr1_cn_math_single_expr_grpo_small_v2/`, completed successfully in `00:08:08` on RTX A5000.
+- GRPO settings: `80` steps, `num_generations=8`, `per_device_train_batch_size=8`, `max_completion_length=64`, `temperature=0.9`, `top_p=0.95`, `learning_rate=3e-7`, `beta=0.0`, `gradient_checkpointing=true`, `enable_thinking=false`.
+- Reward config: `math_boxed_v001` with `allow_symbolic_equivalence=true` and `symbolic_equivalence_engine=sympy`; reward semantics were not changed.
+- Rollout-format gate before training: reward mean `0.3594`, reward std `0.4798`, parse failure rate `0.0`, frac reward zero std `0.6875`, effective mixed group rate `0.3125`, average completion length `13.0547`.
+- Trainer signal: reward mean `0.3531`, reward std `0.2137`, frac reward zero std `0.5125`, effective mixed group rate `0.4875`, nonzero grad step rate `0.4875`, parse failure rate `0.0`, average completion length `8.3016`, final loss `0.01485`.
+- Heldout eval before GRPO on the fixed `256` validation prompts: `answer_match=0.3125`, parse failure rate `0.0`, average completion length `13.8359`.
+- Heldout eval after GRPO on the same `256` validation prompts: `answer_match=0.3242`, parse failure rate `0.0`, average completion length `13.7930`.
+- Heldout delta: answer accuracy `+0.0117` absolute, parse failure rate unchanged at `0.0`, average output length `-0.0430`.
+- Note: `eval_runner`'s raw `format_success` field is not useful for this run because the configured regex was over-escaped; `math_boxed_v001` parsing still succeeded with zero parse failures. Future comparison reports should compute format success from the same parser-normalized answer extraction path or fix the regex config.
+- Run artifacts synced locally: `comparison_metrics.json`, `comparison_report.md`, `metrics.jsonl`, `trainer_log.jsonl`, `run_card.md`, `sample_rollouts.jsonl`, heldout eval metrics/generations, and Slurm logs. Large checkpoint weights remain on the server scratch path.
+- No `data/raw` files, eval prompts, reward semantics, or existing train/validation/test splits were modified.
+- Interpretation: the small GRPO run technically worked and produced nonzero advantage on about half of trainer steps. Heldout answer accuracy improved slightly, but the gain is small on only `256` eval examples, so this is evidence that the setup is viable rather than proof of a robust model-quality improvement. The next run should keep the same frozen heldout comparison but increase training prompts and steps only after fixing the format-success reporting issue.
