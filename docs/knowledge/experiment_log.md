@@ -512,3 +512,21 @@ Record training and eval runs here with links to run directories, run cards, res
 - Frontier filter result: `1/12` prompts kept; the filtered `frontier_grpo_train.jsonl` validated successfully.
 - Representative mixed prompt: for `x^2-3=0`, one exact target-form set answer received reward `1`, while variants such as `\sqrt{3}`, `\pm\sqrt{3}`, or differently formatted assignment sets received reward `0`. This confirms the current reward is strict and deterministic, but it may under-credit mathematically equivalent multi-solution formats.
 - Interpretation: the selected SFT checkpoint produces stable single-boxed parseable outputs, so reward parsing is ready. The reward signal is too sparse for direct GRPO on arbitrary sampled prompts; only a frontier-filtered prompt pool or a reward-normalization/parser-format review for multi-solution answers should precede larger GRPO.
+
+### 2026-05-30 Qwen3-4B Single-Expression Filter Eval and Rollout Audit
+
+- Goal: apply `single_expression_no_assignment_v1`, re-evaluate the current `checkpoint-5250`, and rerun a small rollout audit before deciding on GRPO.
+- Code commit used on server: `61db40d852b60ccc18bca5f293c247d0804887ce`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/4affb7b-sympy-boxed-data`.
+- Filtered RLVR output: `data/rlvr_prompts/openr1_cn_math_alg_nt_single_expr_v1/`.
+- Filtered SFT output: `data/staged/openr1_cn_math_alg_nt_single_expr_sft_v1/`.
+- Filter policy: reject targets containing assignment/equation `=` or plus-minus macros/symbols. This did not modify `data/raw`, reward semantics, eval prompts, or existing split membership.
+- Filter result: input train/validation/test `18500/2300/2300`; output train/validation/test `16904/2104/2115`; rejected `1977` assignment targets and `0` plus-minus targets. All generated RLVR/SFT JSONL files validated successfully.
+- Reward tests: server `tests/test_math_reward.py` passed with `30 passed`.
+- Evaluation: `Qwen/Qwen3-4B` plus `runs/sft/qwen3_4b_openr1_cn_math_sft/checkpoint-5250` on a fixed random sample of `512` filtered validation prompts.
+- Eval settings: greedy decoding, `max_new_tokens=64`, `enable_thinking=false`, `math_boxed_v001`, `allow_symbolic_equivalence=true`, `symbolic_equivalence_engine=sympy`.
+- Eval result: `answer_match=0.328125`, parse failure rate `0.0`, average completion length `13.51` characters.
+- Rollout audit: `24` filtered train prompts, `8` sampled completions per prompt, `192` total completions, `temperature=0.9`, `top_p=0.95`, `max_new_tokens=64`.
+- Audit result: reward mean `0.1458`, reward std `0.3529`, parse failure rate `0.0104`, average completion length `15.65` characters.
+- Prompt buckets: `7/24` all-zero, `4/24` all-one, `13/24` mixed; effective mixed group rate `0.5417`; frontier filter kept `7/24` prompts and the filtered frontier JSONL validated.
+- Interpretation: filtering assignment-like targets materially improved rollout usefulness compared with the prior micro audit (`mixed_rate` from `0.1667` to `0.5417`, selected prompt rate from `0.0833` to `0.2917`) while preserving low parse failures. A tiny GRPO smoke on the frontier-kept prompts is now reasonable, but a larger GRPO run should wait for a larger filtered/frontier pool and heldout comparison.

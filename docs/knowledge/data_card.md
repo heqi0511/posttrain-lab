@@ -325,6 +325,12 @@ Target policy:
 - Reject targets containing assignment/equation `=`.
 - Reject plus-minus targets containing `\pm`, `\mp`, or `±`.
 
+Generated counts from `openr1_cn_math_alg_nt_v1`:
+
+- Input train/validation/test: `18500` / `2300` / `2300`
+- Output train/validation/test: `16904` / `2104` / `2115`
+- Rejected targets: `1977` assignment/equation targets, `0` plus-minus targets in this staged source
+
 Rationale:
 
 - The current `math_boxed_v001` reward is intentionally strict for assignment-like and multi-solution formats.
