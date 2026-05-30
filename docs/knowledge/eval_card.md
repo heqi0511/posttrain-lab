@@ -44,6 +44,27 @@ Dry-run mode uses `mock_generation` and does not load a model. Non-dry-run mode 
 - If an eval bug is fixed, record the new eval version and do not compare it directly to older results without calling out the version change.
 - Always preserve raw generations for manual review.
 
+## Sampled Heldout Eval
+
+Status: sampled heldout eval implemented for checking whether GRPO changes the model distribution, not just greedy/top-1 output.
+
+Command shape:
+
+```bash
+python -m posttrain_lab.eval.sampled_eval --config <sampled_eval.yaml>
+```
+
+The sampled eval reads the same heldout JSONL format as the greedy eval, samples `K` completions per prompt, and writes `sampled_generations.jsonl`, `sampled_by_prompt.jsonl`, `metrics.json`, and `eval_report.md`.
+
+Required reported metrics:
+
+- `sampled_accuracy`: mean reward over all sampled completions.
+- `pass_at_K`: fraction of prompts with at least one correct sampled completion.
+- `all_correct_rate`, `all_zero_rate`, and `mixed_prompt_rate`.
+- `format_success_rate`, `parse_failure_rate`, and average completion length.
+
+Comparability rule: sampled evals are comparable only when they use the same heldout file, `K`, seed, temperature, top-p, max-new-token budget, reward version, and symbolic-equivalence settings.
+
 ## OpenR1-Style Reasoning Eval
 
 For reasoning SFT runs trained on `<think>...</think>` traces, use a separate reasoning eval instead of changing the fixed final-only baseline.

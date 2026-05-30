@@ -591,3 +591,32 @@ Record training and eval runs here with links to run directories, run cards, res
 - Run artifacts synced locally: `comparison_metrics.json`, `comparison_report.md`, `metrics.jsonl`, `trainer_log.jsonl`, `run_card.md`, `sample_rollouts.jsonl`, heldout eval metrics/generations, and Slurm logs. Large adapter checkpoint weights remain on the server scratch path.
 - No `data/raw` files, eval prompts, reward semantics, or existing train/validation/test splits were modified.
 - Interpretation: the medium run is technically healthy and did not regress format, parseability, or output length. The heldout accuracy gain is positive but very small on `512` examples, so it supports one more cautious scale-up rather than a large run. The next run should keep the same parent SFT checkpoint and frozen eval protocol, increase data/steps moderately, and consider evaluating intermediate checkpoints before committing to longer GRPO.
+
+### 2026-05-30 Qwen3-4B Single-Expression GRPO Continuation to 2000 Steps
+
+- Goal: add a heldout sampled eval and continue GRPO from the medium run to a total of about `2000` GRPO steps from the selected SFT checkpoint.
+- Code commit used on server: `7d0455bfe275bff68ba727e9a488840acd9df838`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/4affb7b-sympy-boxed-data`.
+- Output path: `runs/rlvr/qwen3_4b_openr1_cn_math_single_expr_grpo_2k_v1/`.
+- Slurm job: `6938965`, completed successfully on `cbcb-heng` in `01:23:08` on RTX A5000.
+- Parent adapter: `runs/rlvr/qwen3_4b_openr1_cn_math_single_expr_grpo_medium_v1/checkpoint-300`.
+- Data source: `data/rlvr_prompts/openr1_cn_math_alg_nt_single_expr_v1/`; fixed train sample `4096` prompts and fixed heldout validation sample `512` prompts, both sampled with seed `20260530`.
+- Data hashes: train `498c15e0138c0fa3009dd3f4e3eaac2e4f56c27c1e1e02e29800e005acbb61f1`; heldout eval `f55130fff2bcd1e304df5bf0ac8e8015d536cb011bb8d00206a2522942a884ef`.
+- GRPO settings: `1700` additional steps, `num_generations=8`, `per_device_train_batch_size=8`, `max_completion_length=64`, `temperature=0.9`, `top_p=0.95`, `learning_rate=2e-7`, `beta=0.0`, `gradient_checkpointing=true`, `enable_thinking=false`.
+- Total GRPO steps from the selected SFT checkpoint: `2000` (`300` medium-run steps plus `1700` continuation steps).
+- Checkpoints saved on server: `checkpoint-250`, `checkpoint-500`, `checkpoint-750`, `checkpoint-1000`, `checkpoint-1250`, `checkpoint-1500`, `checkpoint-1700`, plus the final root adapter under the run directory.
+- Reward config: `math_boxed_v001` with `allow_symbolic_equivalence=true` and `symbolic_equivalence_engine=sympy`; reward semantics were not changed.
+- Rollout-format gate before continuation: reward mean `0.2949`, reward std `0.4560`, parse failure rate `0.0`, frac reward zero std `0.5156`, effective mixed group rate `0.4844`, average completion length `13.59`.
+- Trainer signal over `1700` steps: final loss `0.00719`, reward mean `0.3319`, reward std `0.1815`, frac reward zero std `0.5924`, effective mixed group rate `0.4076`, nonzero grad step rate `0.4076`, parse failure rate `0.0`, average completion length `8.65`.
+- Greedy heldout eval on `512` prompts before continuation: `answer_match=0.3125`, `format_success=1.0`, parse failure rate `0.0`, average completion length `13.80`.
+- Greedy heldout eval after continuation: `answer_match=0.3164`, `format_success=1.0`, parse failure rate `0.0`, average completion length `13.50`.
+- Greedy heldout delta: answer accuracy `+0.0039` absolute, format success unchanged, parse failure rate unchanged at `0.0`, average output length `-0.3008`.
+- Sampled heldout eval settings: same `512` prompts, `8` completions per prompt, temperature `0.9`, top-p `0.95`, max new tokens `64`, same reward and symbolic-equivalence settings.
+- Sampled heldout eval before continuation: sampled accuracy `0.2632`, `pass_at_8=0.5020`, format success `1.0`, parse failure rate `0.0`, mixed prompt rate `0.3711`, mean unique answer count `4.8125`.
+- Sampled heldout eval after continuation: sampled accuracy `0.2830`, `pass_at_8=0.5098`, format success `0.9998`, parse failure rate `0.00024`, mixed prompt rate `0.3672`, mean unique answer count `4.3574`.
+- Sampled heldout delta: sampled accuracy `+0.0198`, `pass_at_8 +0.0078`, parse failure rate `+0.00024`, average completion length `-0.2778`, mean unique answer count `-0.4551`.
+- Greedy answer changes: `7` heldout examples changed from wrong to correct, `5` changed from correct to wrong, and `464/512` greedy generations were unchanged.
+- Sampled pass@8 changes: `38` prompts changed from no-pass to pass, `34` changed from pass to no-pass, and `338/512` prompts had no sampled reward-mean change.
+- Run artifacts synced locally: `comparison_metrics.json`, `comparison_report.md`, greedy and sampled eval metrics/generations, `metrics.jsonl`, `trainer_log.jsonl`, `run_card.md`, `sample_rollouts.jsonl`, and Slurm logs. Large adapter checkpoint weights remain on the server scratch path.
+- No `data/raw` files, eval prompts, reward semantics, or existing train/validation/test splits were modified.
+- Interpretation: continuing to 2000 total GRPO steps improved sampled accuracy more than greedy accuracy, suggesting the policy distribution shifted modestly toward correct answers while top-1 behavior barely moved. The gain remains small and noisy; continuing much longer on the same setup is unlikely to produce a large greedy jump without improving prompt selection, data difficulty balance, or adding checkpoint-level selection/eval.
