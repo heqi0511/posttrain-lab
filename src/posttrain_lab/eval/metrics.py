@@ -14,7 +14,27 @@ def format_success(pattern, generation):
 
     if not pattern:
         return None
-    return re.search(pattern, generation.strip()) is not None
+    return re.search(_normalize_format_pattern(pattern), generation.strip()) is not None
+
+
+def _normalize_format_pattern(pattern):
+    """Normalize common YAML regex intent for literal LaTeX boxed answers."""
+
+    return _escape_single_backslash_boxed(pattern)
+
+
+def _escape_single_backslash_boxed(pattern):
+    result = []
+    index = 0
+    token = r"\boxed"
+    while index < len(pattern):
+        if pattern.startswith(token, index) and (index == 0 or pattern[index - 1] != "\\"):
+            result.append(r"\\boxed")
+            index += len(token)
+            continue
+        result.append(pattern[index])
+        index += 1
+    return "".join(result)
 
 
 def regex_format_success(text, pattern):

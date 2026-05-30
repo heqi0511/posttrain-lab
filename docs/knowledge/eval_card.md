@@ -4,6 +4,16 @@ Status: baseline dry-run eval runner implemented.
 
 The eval runner reads JSONL prompts, generates outputs, writes `raw_generations.jsonl`, `metrics.json`, and `eval_report.md`, and supports exact-match, regex-based format-success, and boxed-answer math matching metrics.
 
+## Format Success
+
+For LaTeX boxed-answer format checks, the intended regex is a literal `\boxed{...}` match. YAML configs should prefer:
+
+```yaml
+format_regex: ^\\boxed\{.+\}$
+```
+
+The eval helper also normalizes the common single-backslash pattern `^\boxed\{.+\}$` to the same literal boxed-answer check, because Python regex otherwise interprets `\b` as a word boundary. This normalization is a reporting bug fix only; it does not change reward semantics, eval prompts, labels, decoding settings, or answer correctness.
+
 ## JSONL Input
 
 Each eval record must include:

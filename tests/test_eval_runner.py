@@ -27,6 +27,11 @@ def test_metric_helpers_are_strict_and_deterministic():
     assert not format_success(r"^\\boxed\{.+\}$", "42")
 
 
+def test_format_success_treats_single_backslash_boxed_as_literal_boxed():
+    assert format_success(r"^\boxed\{.+\}$", r"\boxed{42}")
+    assert not format_success(r"^\boxed\{.+\}$", "oxed{42}")
+
+
 def test_dry_run_eval_writes_generations_metrics_and_report(tmp_path):
     prompt_path = tmp_path / "prompts.jsonl"
     output_dir = tmp_path / "eval_run"
