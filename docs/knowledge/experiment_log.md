@@ -495,3 +495,20 @@ Record training and eval runs here with links to run directories, run cards, res
 - Run artifacts synced locally: `runs/sft/qwen3_4b_openr1_cn_math_sft/loss_curve.csv`, `trainer_log.jsonl`, `selected_checkpoint.json`, `metrics.jsonl`, `run_card.md`, `sample_generations.jsonl`, `eval/metrics.json`, and Slurm logs. Large adapter checkpoint weights remain on the server scratch path.
 - No `data/raw` files, eval prompts, reward semantics, or existing train/validation/test splits were modified. This run created a new staged dataset version and documented its split policy.
 - Interpretation: the run substantially reduced validation loss and produced short parseable boxed outputs, with zero parse failures on the fixed validation-generation eval. Accuracy is meaningfully higher than the previous SymPy-boxed SFT validation sample (`0.375` vs `0.15625`), but validation loss plateaued after about step `4500`; use `checkpoint-5250` as the selected checkpoint for a small GRPO feasibility audit rather than continuing SFT blindly.
+
+### 2026-05-30 Qwen3-4B OpenR1 CN Math Checkpoint-5250 Micro Rollout Audit
+
+- Goal: confirm `math_boxed_v001` reward behavior and rollout readiness before any GRPO trainer step from the selected SFT checkpoint.
+- Code commit used on server: `af5ea5bd0cb3eca5246e4e5176ab4f8f993062ee`.
+- Worktree: `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/4affb7b-sympy-boxed-data`.
+- Policy checkpoint: `runs/sft/qwen3_4b_openr1_cn_math_sft/checkpoint-5250`.
+- Prompt source: fixed random sample of `12` train prompts from `data/rlvr_prompts/openr1_cn_math_alg_nt_v1/train.jsonl`, written under `runs/rlvr/qwen3_4b_openr1_cn_math_ckpt5250_micro_audit/sampled_train_prompts.jsonl`.
+- Slurm job: `6938512`, completed successfully on `cbcb-heng` in `00:01:14` on RTX A5000; no trainer step was executed.
+- Reward tests: local `make test-rewards` passed with `25 passed, 5 skipped`; server `make test-rewards PYTHON=/fs/nexus-scratch/qhe123/envs/posttrain-lab-trl/bin/python` passed with `30 passed`.
+- Rollout settings: `8` sampled completions per prompt, `96` total completions, `temperature=0.9`, `top_p=0.95`, `max_new_tokens=64`, `enable_thinking=false`, generation batch size `4`.
+- Reward config: `math_boxed_v001` with `allow_symbolic_equivalence=true` and `symbolic_equivalence_engine=sympy`; reward semantics were not changed.
+- Audit summary: reward mean `0.1458`, reward std `0.3529`, zero reward rate `0.8542`, perfect reward rate `0.1458`, parse failure rate `0.0`, average completion length `15.59` characters, max completion length `44` characters.
+- Prompt buckets: `9/12` all-zero, `1/12` all-one, `2/12` mixed; effective mixed group rate `0.1667`.
+- Frontier filter result: `1/12` prompts kept; the filtered `frontier_grpo_train.jsonl` validated successfully.
+- Representative mixed prompt: for `x^2-3=0`, one exact target-form set answer received reward `1`, while variants such as `\sqrt{3}`, `\pm\sqrt{3}`, or differently formatted assignment sets received reward `0`. This confirms the current reward is strict and deterministic, but it may under-credit mathematically equivalent multi-solution formats.
+- Interpretation: the selected SFT checkpoint produces stable single-boxed parseable outputs, so reward parsing is ready. The reward signal is too sparse for direct GRPO on arbitrary sampled prompts; only a frontier-filtered prompt pool or a reward-normalization/parser-format review for multi-solution answers should precede larger GRPO.
