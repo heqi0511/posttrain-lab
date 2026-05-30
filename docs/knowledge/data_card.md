@@ -287,9 +287,9 @@ Source and filters:
 
 Default split sizes:
 
-- Train: `20000`
-- Validation: `2000`
-- Test: `2000`
+- Train: `18500`
+- Validation: `2300`
+- Test: `2300`
 
 Target policy:
 

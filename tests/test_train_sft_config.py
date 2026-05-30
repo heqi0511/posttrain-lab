@@ -288,8 +288,8 @@ def test_qwen3_4b_openr1_cn_math_config_uses_filtered_staged_data_and_early_stop
     assert config["model_name_or_path"] == "Qwen/Qwen3-4B"
     assert config["data_path"] == "data/staged/openr1_cn_math_alg_nt_sft_v1/train.jsonl"
     assert config["validation_data_path"] == "data/staged/openr1_cn_math_alg_nt_sft_v1/val.jsonl"
-    assert config["selection"]["max_train_examples"] == 20000
-    assert config["selection"]["max_validation_examples"] == 2000
+    assert config["selection"]["max_train_examples"] == 18500
+    assert config["selection"]["max_validation_examples"] == 2300
     assert config["training"]["max_steps"] == 6000
     assert config["training"]["eval_steps"] == 250
     assert config["training"]["save_steps"] == 250

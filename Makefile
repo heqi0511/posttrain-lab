@@ -53,7 +53,7 @@ openr1-level-rlvr-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.openr1_level_filter --output-dir $(OPENR1_LEVEL_RLVR_DIR)
 
 openr1-cn-math-data:
-	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.openr1_level_filter --dataset-config extended --levels all --sources cn_k12,cn_contest,amc_aime --domains Algebra,Number\ Theory --output-dir $(OPENR1_CN_MATH_RLVR_DIR) --sft-output-dir $(OPENR1_CN_MATH_SFT_DIR) --train-count 20000 --val-count 2000 --test-count 2000
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.openr1_level_filter --dataset-config extended --levels all --sources cn_k12,cn_contest,amc_aime --domains Algebra,Number\ Theory --output-dir $(OPENR1_CN_MATH_RLVR_DIR) --sft-output-dir $(OPENR1_CN_MATH_SFT_DIR) --train-count 18500 --val-count 2300 --test-count 2300
 
 check-leakage:
 	@echo "check-leakage placeholder: no leakage checker configured yet"

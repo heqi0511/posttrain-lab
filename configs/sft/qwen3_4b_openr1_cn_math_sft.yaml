@@ -13,8 +13,8 @@ attn_implementation: null
 selection:
   train_split: train
   validation_split: val
-  max_train_examples: 20000
-  max_validation_examples: 2000
+  max_train_examples: 18500
+  max_validation_examples: 2300
 training:
   max_steps: 6000
   per_device_train_batch_size: 1
