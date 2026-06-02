@@ -627,3 +627,14 @@ Record training and eval runs here with links to run directories, run cards, res
 - Run artifacts synced locally: `comparison_metrics.json`, `comparison_report.md`, greedy and sampled eval metrics/generations, `metrics.jsonl`, `trainer_log.jsonl`, `run_card.md`, `sample_rollouts.jsonl`, and Slurm logs. Large adapter checkpoint weights remain on the server scratch path.
 - No `data/raw` files, eval prompts, reward semantics, or existing train/validation/test splits were modified.
 - Interpretation: continuing to 2000 total GRPO steps improved sampled accuracy more than greedy accuracy, suggesting the policy distribution shifted modestly toward correct answers while top-1 behavior barely moved. The gain remains small and noisy; continuing much longer on the same setup is unlikely to produce a large greedy jump without improving prompt selection, data difficulty balance, or adding checkpoint-level selection/eval.
+
+### 2026-06-02 Qwen2.5-Math-1.5B DAPO GRPO Prep
+
+- Goal: prepare a higher-resource GRPO experiment based on the Section 4.1 / Appendix D Qwen2.5-Math-1.5B setup, adapted to Nexus resources.
+- Added DAPO staging command: `make dapo-rlvr-data`, which converts the downloaded DAPO-Math Raw 17k parquet into strict RLVR JSONL under `data/rlvr_prompts/dapo_math_raw_17k/train.jsonl`.
+- Added config: `configs/rlvr/qwen25_math_1_5b_dapo_grpo_paperish.yaml`.
+- Paper-aligned settings in the config: Qwen2.5-Math-1.5B, DAPO17k, `num_generations=4`, `max_completion_length=2048`, `learning_rate=2e-6`, `epsilon=0.22`, `beta=0.0`, `temperature=0.8`, `num_iterations=2`, DAPO loss, and full finetuning via `peft.method: none`.
+- Nexus adaptation: intended `4` GPU launch uses `per_device_train_batch_size=16`, giving a target global prompt batch of about `64` prompts under `torchrun --nproc_per_node=4`.
+- Added multi-GPU Slurm runner: `scripts/slurm/run_grpo_config.sh`.
+- Added submit target: `make submit-qwen25-dapo-grpo`, defaulting to `cbcb-heng`, `gpu:rtx6000ada:4`, `16` CPU, `192G` memory, and `12:00:00` walltime.
+- Safety: no training was started; no `data/raw`, eval prompts, reward semantics, or existing train/validation/test splits were modified.

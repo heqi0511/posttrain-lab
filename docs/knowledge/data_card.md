@@ -368,3 +368,33 @@ Integrity notes:
 - Eval prompts are held out from SFT train and validation staged data.
 - The E2E pipeline fails fast if normalized prompts overlap between SFT train, SFT validation, RLVR train, and heldout eval where applicable.
 - All answers are synthetic and final-only boxed for SFT/eval; RLVR verifier answers store the unboxed value used by `math_boxed_v001`.
+
+## DAPO-Math Raw 17k RLVR Staging
+
+Status: conversion workflow prepared for the Qwen2.5-Math-1.5B GRPO experiment. This is a staged training pool derived from DAPO-Math Raw 17k, not a raw-data edit.
+
+Command:
+
+```bash
+make dapo-rlvr-data
+```
+
+Default inputs and outputs:
+
+- Input: `/fs/nexus-scratch/qhe123/datasets/DAPO-Math-Raw-17k/dapo-math-raw-17k.parquet`
+- Output: `data/rlvr_prompts/dapo_math_raw_17k/train.jsonl`
+- Summary: `data/rlvr_prompts/dapo_math_raw_17k/summary.json`
+
+Conversion policy:
+
+- Use `raw_problem` as the user-visible math problem when available.
+- Use `reward_model.ground_truth` as the verifier answer.
+- Wrap each prompt with a stable boxed-answer instruction requiring exactly one final `\boxed{...}` answer.
+- Write only `train` split records because DAPO17k is used as RLVR training data; MATH500, AMC23, and OlympiadBench remain separate eval datasets.
+
+Integrity notes:
+
+- `data/raw/` is not modified.
+- Reward semantics are not changed.
+- Eval prompts and eval labels are not modified.
+- The generated RLVR file must validate with `make validate-data` before training.

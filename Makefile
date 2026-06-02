@@ -1,7 +1,16 @@
-.PHONY: format lint test test-rewards test-eval validate-data validate-sympy-boxed-data build-sympy-boxed-data openr1-level-rlvr-data openr1-cn-math-data openr1-cn-math-single-expr-data check-leakage eval-baseline eval-math-dataset-dry eval-qwen25-math-dry sft-smoke sft-openr1-math-1k sft-openr1-math-1k-long sft-openr1-format-repair sft-qwen3-4b-format-repair-tiny sft-qwen3-4b-sympy-boxed-smoke sft-qwen3-4b-sympy-boxed-full sft-qwen3-4b-cn-math sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
+.PHONY: format lint test test-rewards test-eval validate-data validate-sympy-boxed-data build-sympy-boxed-data openr1-level-rlvr-data openr1-cn-math-data openr1-cn-math-single-expr-data dapo-rlvr-data check-leakage eval-baseline eval-math-dataset-dry eval-qwen25-math-dry sft-smoke sft-openr1-math-1k sft-openr1-math-1k-long sft-openr1-format-repair sft-qwen3-4b-format-repair-tiny sft-qwen3-4b-sympy-boxed-smoke sft-qwen3-4b-sympy-boxed-full sft-qwen3-4b-cn-math sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke rlvr-qwen25-dapo-dry submit-qwen25-dapo-grpo gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
 PYTHON ?= python3
 RUN_FRONTIER_AUDIT ?= 0
 SYMPY_BOXED_DATA_DIR ?= data/staged/openr1_deepmath_sympy_boxed_v1
+DAPO_INPUT_PATH ?= /fs/nexus-scratch/qhe123/datasets/DAPO-Math-Raw-17k/dapo-math-raw-17k.parquet
+DAPO_RLVR_DIR ?= data/rlvr_prompts/dapo_math_raw_17k
+QWEN25_DAPO_GRPO_CONFIG ?= configs/rlvr/qwen25_math_1_5b_dapo_grpo_paperish.yaml
+SLURM_PARTITION ?= cbcb-heng
+SLURM_GRES ?= gpu:rtx6000ada:4
+SLURM_CPUS ?= 16
+SLURM_MEM ?= 192G
+SLURM_TIME ?= 12:00:00
+SLURM_LOG_DIR ?= runs/slurm
 OPENR1_LEVEL_RLVR_DIR ?= data/rlvr_prompts/openr1_math_l2_l3_alg_nt_v1
 OPENR1_CN_MATH_RLVR_DIR ?= data/rlvr_prompts/openr1_cn_math_alg_nt_v1
 OPENR1_CN_MATH_SFT_DIR ?= data/staged/openr1_cn_math_alg_nt_sft_v1
@@ -31,6 +40,7 @@ validate-data:
 	@if [ -f $(SYMPY_BOXED_DATA_DIR)/train.jsonl ]; then $(MAKE) validate-sympy-boxed-data; fi
 	@if [ -f data/rlvr_prompts/frontier_grpo_train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path data/rlvr_prompts/frontier_grpo_train.jsonl; fi
 	@if [ -f data/rlvr_prompts/gsm8k_train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path data/rlvr_prompts/gsm8k_train.jsonl; fi
+	@if [ -f $(DAPO_RLVR_DIR)/train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path $(DAPO_RLVR_DIR)/train.jsonl; fi
 	@if [ -f $(OPENR1_LEVEL_RLVR_DIR)/train.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path $(OPENR1_LEVEL_RLVR_DIR)/train.jsonl; fi
 	@if [ -f $(OPENR1_LEVEL_RLVR_DIR)/val.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path $(OPENR1_LEVEL_RLVR_DIR)/val.jsonl; fi
 	@if [ -f $(OPENR1_LEVEL_RLVR_DIR)/test.jsonl ]; then PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.validate --type rlvr --path $(OPENR1_LEVEL_RLVR_DIR)/test.jsonl; fi
@@ -65,6 +75,9 @@ openr1-cn-math-data:
 
 openr1-cn-math-single-expr-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.target_policy_filter --input-rlvr-dir $(OPENR1_CN_MATH_RLVR_DIR) --output-rlvr-dir $(OPENR1_CN_MATH_SINGLE_EXPR_RLVR_DIR) --input-sft-dir $(OPENR1_CN_MATH_SFT_DIR) --output-sft-dir $(OPENR1_CN_MATH_SINGLE_EXPR_SFT_DIR) --target-policy single_expression_no_assignment_v1
+
+dapo-rlvr-data:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.dapo_math --input-path $(DAPO_INPUT_PATH) --output $(DAPO_RLVR_DIR)/train.jsonl --summary $(DAPO_RLVR_DIR)/summary.json
 
 check-leakage:
 	@echo "check-leakage placeholder: no leakage checker configured yet"
@@ -132,6 +145,13 @@ rlvr-frontier-smoke:
 		$(MAKE) rlvr-frontier-audit RUN_FRONTIER_AUDIT=1; \
 		PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_grpo --config configs/rlvr/frontier_grpo_smoke.yaml; \
 	fi
+
+rlvr-qwen25-dapo-dry:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_grpo --config $(QWEN25_DAPO_GRPO_CONFIG) --dry-run
+
+submit-qwen25-dapo-grpo:
+	@mkdir -p $(SLURM_LOG_DIR)
+	sbatch --job-name=qwen25-dapo-grpo --partition=$(SLURM_PARTITION) --gres=$(SLURM_GRES) --cpus-per-task=$(SLURM_CPUS) --mem=$(SLURM_MEM) --time=$(SLURM_TIME) --output=$(SLURM_LOG_DIR)/qwen25-dapo-grpo-%j.out --error=$(SLURM_LOG_DIR)/qwen25-dapo-grpo-%j.err scripts/slurm/run_grpo_config.sh $(QWEN25_DAPO_GRPO_CONFIG)
 
 gsm8k-rlvr-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.gsm8k --output data/rlvr_prompts/gsm8k_train.jsonl --summary data/rlvr_prompts/gsm8k_train_summary.json

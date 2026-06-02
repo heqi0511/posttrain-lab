@@ -1,0 +1,83 @@
+run_name: qwen25-math-1.5b-dapo17k-grpo-paperish
+model_name_or_path: /fs/nexus-scratch/qhe123/models/Qwen2.5-Math-1.5B
+adapter_path: null
+data_path: data/rlvr_prompts/dapo_math_raw_17k/train.jsonl
+output_dir: runs/rlvr/qwen25_math_1_5b_dapo_grpo_paperish
+dry_run: false
+synthetic_data_if_missing: false
+smoke_run: false
+seed: 20260602
+torch_dtype: bfloat16
+trust_remote_code: false
+enable_thinking: false
+reward_version: math_boxed_v001
+selection:
+  train_split: train
+  max_train_examples: 17917
+training:
+  # Paper target: 64 questions/batch on 4 GPUs. With torchrun --nproc_per_node=4,
+  # per_device_train_batch_size=16 gives a 64-prompt global batch.
+  max_steps: 280
+  per_device_train_batch_size: 16
+  gradient_accumulation_steps: 1
+  learning_rate: 0.000002
+  bf16: true
+  fp16: false
+  gradient_checkpointing: true
+  gradient_checkpointing_kwargs: null
+  logging_steps: 1
+  save_steps: 50
+  save_total_limit: 4
+  optim: adamw_torch
+  lr_scheduler_type: constant
+  warmup_ratio: 0.0
+  max_grad_norm: 1.0
+  dataloader_num_workers: 2
+  remove_unused_columns: false
+  frac_reward_zero_std_early_stop: true
+  frac_reward_zero_std_threshold: 0.9
+  frac_reward_zero_std_patience: 50
+rollout:
+  num_generations: 4
+  max_prompt_length: 1024
+  max_completion_length: 2048
+  temperature: 0.8
+  top_p: 1.0
+  top_k: 0
+  beta: 0.0
+  epsilon: 0.22
+  epsilon_high: null
+  num_iterations: 2
+  loss_type: dapo
+  scale_rewards: none
+  steps_per_generation: 1
+  generation_batch_size: null
+  ds3_gather_for_generation: true
+  mask_truncated_completions: true
+  use_vllm: false
+  vllm_mode: colocate
+  vllm_gpu_memory_utilization: 0.3
+  vllm_max_model_length: 3072
+  sample_count: 32
+  sample_rollout_generations: 4
+rollout_format_gate:
+  enabled: true
+  sample_count: 16
+  max_parse_failure_rate: 0.5
+  max_reward_mean: 0.95
+  max_perfect_reward_rate: 0.95
+reward:
+  allow_symbolic_equivalence: true
+  symbolic_equivalence_engine: sympy
+  max_symbolic_expr_chars: 200
+  max_symbolic_ast_nodes: 128
+  max_symbolic_collection_size: 32
+peft:
+  # Paper Appendix D uses LoRA rank 0, i.e. full finetuning.
+  method: none
+  r: 0
+  lora_alpha: 0
+  lora_dropout: 0.0
+  target_modules: []
+eval_after_train:
+  enabled: false

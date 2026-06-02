@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import inspect
 import json
 import statistics
 from pathlib import Path
@@ -250,18 +251,39 @@ def _resolve_config(config):
     resolved["training"].setdefault("bf16", False)
     resolved["training"].setdefault("fp16", False)
     resolved["training"].setdefault("gradient_checkpointing", False)
+    resolved["training"].setdefault("gradient_checkpointing_kwargs", None)
     resolved["training"].setdefault("logging_steps", 1)
     resolved["training"].setdefault("save_steps", resolved["training"]["max_steps"])
     resolved["training"].setdefault("save_total_limit", 1)
+    resolved["training"].setdefault("optim", None)
+    resolved["training"].setdefault("lr_scheduler_type", None)
+    resolved["training"].setdefault("warmup_ratio", None)
+    resolved["training"].setdefault("max_grad_norm", None)
+    resolved["training"].setdefault("dataloader_num_workers", 0)
+    resolved["training"].setdefault("remove_unused_columns", False)
     resolved["training"].setdefault("frac_reward_zero_std_early_stop", False)
     resolved["training"].setdefault("frac_reward_zero_std_threshold", 0.8)
     resolved["training"].setdefault("frac_reward_zero_std_patience", 20)
     resolved["rollout"].setdefault("num_generations", 2)
     resolved["rollout"].setdefault("max_completion_length", 16)
+    resolved["rollout"].setdefault("max_prompt_length", None)
     resolved["rollout"].setdefault("temperature", 0.7)
     resolved["rollout"].setdefault("top_p", 1.0)
     resolved["rollout"].setdefault("top_k", 0)
     resolved["rollout"].setdefault("beta", 0.0)
+    resolved["rollout"].setdefault("epsilon", 0.2)
+    resolved["rollout"].setdefault("epsilon_high", None)
+    resolved["rollout"].setdefault("num_iterations", 1)
+    resolved["rollout"].setdefault("loss_type", "dapo")
+    resolved["rollout"].setdefault("scale_rewards", "group")
+    resolved["rollout"].setdefault("steps_per_generation", None)
+    resolved["rollout"].setdefault("generation_batch_size", None)
+    resolved["rollout"].setdefault("ds3_gather_for_generation", True)
+    resolved["rollout"].setdefault("mask_truncated_completions", False)
+    resolved["rollout"].setdefault("use_vllm", False)
+    resolved["rollout"].setdefault("vllm_mode", "colocate")
+    resolved["rollout"].setdefault("vllm_gpu_memory_utilization", 0.3)
+    resolved["rollout"].setdefault("vllm_max_model_length", None)
     resolved["rollout"].setdefault("sample_count", 4)
     resolved["rollout"].setdefault("sample_rollout_generations", 1)
     resolved.setdefault("rollout_format_gate", {})
@@ -318,33 +340,7 @@ def _run_trl_grpo(config, examples, output_dir):
     model, tokenizer, peft_config = _load_policy_model_and_tokenizer(config)
     reward_func = make_math_boxed_reward_func(_math_reward_config(config))
     train_dataset = Dataset.from_list(_to_grpo_rows(examples))
-    args = GRPOConfig(
-        output_dir=str(output_dir),
-        max_steps=int(config["training"]["max_steps"]),
-        per_device_train_batch_size=int(config["training"]["per_device_train_batch_size"]),
-        gradient_accumulation_steps=int(config["training"]["gradient_accumulation_steps"]),
-        learning_rate=float(config["training"]["learning_rate"]),
-        logging_steps=int(config["training"]["logging_steps"]),
-        logging_first_step=True,
-        save_steps=int(config["training"]["save_steps"]),
-        save_total_limit=int(config["training"]["save_total_limit"]),
-        save_strategy="steps",
-        report_to="none",
-        seed=int(config["seed"]),
-        bf16=bool(config["training"]["bf16"]),
-        fp16=bool(config["training"]["fp16"]),
-        gradient_checkpointing=bool(config["training"]["gradient_checkpointing"]),
-        num_generations=int(config["rollout"]["num_generations"]),
-        max_completion_length=int(config["rollout"]["max_completion_length"]),
-        temperature=float(config["rollout"]["temperature"]),
-        top_p=float(config["rollout"]["top_p"]),
-        top_k=int(config["rollout"]["top_k"]),
-        beta=float(config["rollout"]["beta"]),
-        log_completions=True,
-        num_completions_to_print=int(config["rollout"]["num_generations"]),
-        model_init_kwargs=None,
-        chat_template_kwargs=_chat_template_kwargs(config),
-    )
+    args = GRPOConfig(**_build_grpo_config_kwargs(config, output_dir))
     trainer = GRPOTrainer(
         model=model,
         reward_funcs=reward_func,
@@ -357,6 +353,77 @@ def _run_trl_grpo(config, examples, output_dir):
     result = trainer.train()
     trainer.save_model(str(output_dir))
     return float(result.training_loss), trainer.state.log_history, trainer.model, tokenizer
+
+
+def _build_grpo_config_kwargs(config, output_dir, supported_fields=None):
+    """Build TRL GRPOConfig kwargs while tolerating minor TRL version drift."""
+
+    if supported_fields is None:
+        try:
+            from trl import GRPOConfig
+        except ImportError as exc:
+            raise RuntimeError("TRL GRPO training requires trl") from exc
+        supported_fields = set(inspect.signature(GRPOConfig.__init__).parameters)
+
+    kwargs = {
+        "output_dir": str(output_dir),
+        "max_steps": int(config["training"]["max_steps"]),
+        "per_device_train_batch_size": int(config["training"]["per_device_train_batch_size"]),
+        "gradient_accumulation_steps": int(config["training"]["gradient_accumulation_steps"]),
+        "learning_rate": float(config["training"]["learning_rate"]),
+        "logging_steps": int(config["training"]["logging_steps"]),
+        "logging_first_step": True,
+        "save_steps": int(config["training"]["save_steps"]),
+        "save_total_limit": int(config["training"]["save_total_limit"]),
+        "save_strategy": "steps",
+        "report_to": "none",
+        "seed": int(config["seed"]),
+        "bf16": bool(config["training"]["bf16"]),
+        "fp16": bool(config["training"]["fp16"]),
+        "gradient_checkpointing": bool(config["training"]["gradient_checkpointing"]),
+        "num_generations": int(config["rollout"]["num_generations"]),
+        "max_completion_length": int(config["rollout"]["max_completion_length"]),
+        "temperature": float(config["rollout"]["temperature"]),
+        "top_p": float(config["rollout"]["top_p"]),
+        "top_k": int(config["rollout"]["top_k"]),
+        "beta": float(config["rollout"]["beta"]),
+        "log_completions": True,
+        "num_completions_to_print": int(config["rollout"]["num_generations"]),
+        "model_init_kwargs": None,
+        "chat_template_kwargs": _chat_template_kwargs(config),
+    }
+    optional = {
+        "optim": config["training"].get("optim"),
+        "lr_scheduler_type": config["training"].get("lr_scheduler_type"),
+        "warmup_ratio": config["training"].get("warmup_ratio"),
+        "max_grad_norm": config["training"].get("max_grad_norm"),
+        "dataloader_num_workers": config["training"].get("dataloader_num_workers"),
+        "remove_unused_columns": config["training"].get("remove_unused_columns"),
+        "gradient_checkpointing_kwargs": config["training"].get("gradient_checkpointing_kwargs"),
+        "max_prompt_length": config["rollout"].get("max_prompt_length"),
+        "epsilon": config["rollout"].get("epsilon"),
+        "epsilon_high": config["rollout"].get("epsilon_high"),
+        "num_iterations": config["rollout"].get("num_iterations"),
+        "loss_type": config["rollout"].get("loss_type"),
+        "scale_rewards": config["rollout"].get("scale_rewards"),
+        "steps_per_generation": config["rollout"].get("steps_per_generation"),
+        "generation_batch_size": config["rollout"].get("generation_batch_size"),
+        "ds3_gather_for_generation": config["rollout"].get("ds3_gather_for_generation"),
+        "mask_truncated_completions": config["rollout"].get("mask_truncated_completions"),
+        "use_vllm": config["rollout"].get("use_vllm"),
+        "vllm_mode": config["rollout"].get("vllm_mode"),
+        "vllm_gpu_memory_utilization": config["rollout"].get("vllm_gpu_memory_utilization"),
+        "vllm_max_model_length": config["rollout"].get("vllm_max_model_length"),
+    }
+    for key, value in optional.items():
+        if value is not None:
+            kwargs[key] = value
+
+    return {
+        key: value
+        for key, value in kwargs.items()
+        if key in supported_fields and key != "self"
+    }
 
 
 def _load_policy_model_and_tokenizer(config, move_to_accelerator=False):
@@ -381,6 +448,14 @@ def _load_policy_model_and_tokenizer(config, move_to_accelerator=False):
         if move_to_accelerator:
             model = _move_model_to_accelerator(model)
         return model, tokenizer, None
+
+    method = str(config["peft"].get("method", "lora")).lower().replace("-", "_")
+    if method in {"none", "full", "full_finetune", "full_finetuning"}:
+        if move_to_accelerator:
+            model = _move_model_to_accelerator(model)
+        return model, tokenizer, None
+    if method != "lora":
+        raise ValueError(f"unsupported peft.method: {config['peft'].get('method')}")
 
     target_modules = config["peft"].get("target_modules") or None
     peft_config = LoraConfig(
@@ -915,6 +990,14 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- reward symbolic equivalence: `{resolved['reward']['allow_symbolic_equivalence']}`",
         f"- reward symbolic engine: `{resolved['reward']['symbolic_equivalence_engine']}`",
         f"- final loss: `{final_loss}`",
+        f"- peft method: `{resolved['peft']['method']}`",
+        f"- learning rate: `{resolved['training']['learning_rate']}`",
+        f"- per-device train batch size: `{resolved['training']['per_device_train_batch_size']}`",
+        f"- gradient accumulation steps: `{resolved['training']['gradient_accumulation_steps']}`",
+        f"- max grad norm: `{resolved['training'].get('max_grad_norm')}`",
+        f"- optimizer: `{resolved['training'].get('optim')}`",
+        f"- lr scheduler: `{resolved['training'].get('lr_scheduler_type')}`",
+        f"- warmup ratio: `{resolved['training'].get('warmup_ratio')}`",
         f"- reward mean: `{metrics['reward_mean']}`",
         f"- reward std: `{metrics['reward_std']}`",
         f"- frac reward zero std: `{metrics.get('frac_reward_zero_std')}`",
@@ -936,10 +1019,19 @@ def _write_run_card(path, resolved, data_hash, config_hash, git_commit, final_lo
         f"- max steps: `{resolved['training']['max_steps']}`",
         f"- num generations: `{resolved['rollout']['num_generations']}`",
         f"- sample rollout generations: `{resolved['rollout'].get('sample_rollout_generations')}`",
+        f"- max prompt length: `{resolved['rollout'].get('max_prompt_length')}`",
         f"- max completion length: `{resolved['rollout']['max_completion_length']}`",
         f"- temperature: `{resolved['rollout']['temperature']}`",
         f"- top_p: `{resolved['rollout']['top_p']}`",
         f"- beta: `{resolved['rollout']['beta']}`",
+        f"- epsilon: `{resolved['rollout'].get('epsilon')}`",
+        f"- epsilon high: `{resolved['rollout'].get('epsilon_high')}`",
+        f"- num iterations: `{resolved['rollout'].get('num_iterations')}`",
+        f"- loss type: `{resolved['rollout'].get('loss_type')}`",
+        f"- scale rewards: `{resolved['rollout'].get('scale_rewards')}`",
+        f"- steps per generation: `{resolved['rollout'].get('steps_per_generation')}`",
+        f"- generation batch size: `{resolved['rollout'].get('generation_batch_size')}`",
+        f"- use vllm: `{resolved['rollout'].get('use_vllm')}`",
         f"- frac reward zero std early stop: `{resolved['training'].get('frac_reward_zero_std_early_stop')}`",
         f"- frac reward zero std threshold: `{resolved['training'].get('frac_reward_zero_std_threshold')}`",
         f"- frac reward zero std patience: `{resolved['training'].get('frac_reward_zero_std_patience')}`",

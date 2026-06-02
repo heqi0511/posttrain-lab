@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from posttrain_lab.train.train_grpo import (
+    _build_grpo_config_kwargs,
     _math_reward_config,
     _rollout_format_gate_passed,
     _resolve_config,
@@ -129,6 +130,90 @@ def test_frontier_grpo_smoke_config_records_requested_sampling_and_early_stop():
     assert config["training"]["frac_reward_zero_std_early_stop"] is True
     assert config["training"]["frac_reward_zero_std_threshold"] == 0.8
     assert config["training"]["frac_reward_zero_std_patience"] == 20
+
+
+def test_qwen25_dapo_grpo_config_matches_paperish_hyperparams():
+    config = load_config("configs/rlvr/qwen25_math_1_5b_dapo_grpo_paperish.yaml")
+    resolved = _resolve_config(config)
+
+    assert resolved["model_name_or_path"].endswith("Qwen2.5-Math-1.5B")
+    assert resolved["selection"]["max_train_examples"] == 17917
+    assert resolved["training"]["per_device_train_batch_size"] == 16
+    assert resolved["training"]["learning_rate"] == 0.000002
+    assert resolved["training"]["max_steps"] == 280
+    assert resolved["rollout"]["num_generations"] == 4
+    assert resolved["rollout"]["max_prompt_length"] == 1024
+    assert resolved["rollout"]["max_completion_length"] == 2048
+    assert resolved["rollout"]["temperature"] == 0.8
+    assert resolved["rollout"]["beta"] == 0.0
+    assert resolved["rollout"]["epsilon"] == 0.22
+    assert resolved["rollout"]["num_iterations"] == 2
+    assert resolved["rollout"]["loss_type"] == "dapo"
+    assert resolved["rollout"]["scale_rewards"] == "none"
+    assert resolved["peft"]["method"] == "none"
+    assert resolved["reward"]["allow_symbolic_equivalence"] is True
+
+
+def test_build_grpo_config_kwargs_passes_optional_trl_fields(tmp_path):
+    config = _resolve_config(load_config("configs/rlvr/qwen25_math_1_5b_dapo_grpo_paperish.yaml"))
+    supported = {
+        "output_dir",
+        "max_steps",
+        "per_device_train_batch_size",
+        "gradient_accumulation_steps",
+        "learning_rate",
+        "logging_steps",
+        "logging_first_step",
+        "save_steps",
+        "save_total_limit",
+        "save_strategy",
+        "report_to",
+        "seed",
+        "bf16",
+        "fp16",
+        "gradient_checkpointing",
+        "gradient_checkpointing_kwargs",
+        "num_generations",
+        "max_completion_length",
+        "temperature",
+        "top_p",
+        "top_k",
+        "beta",
+        "epsilon",
+        "epsilon_high",
+        "num_iterations",
+        "loss_type",
+        "scale_rewards",
+        "steps_per_generation",
+        "ds3_gather_for_generation",
+        "mask_truncated_completions",
+        "use_vllm",
+        "vllm_mode",
+        "vllm_gpu_memory_utilization",
+        "vllm_max_model_length",
+        "optim",
+        "lr_scheduler_type",
+        "warmup_ratio",
+        "max_grad_norm",
+        "dataloader_num_workers",
+        "remove_unused_columns",
+        "log_completions",
+        "num_completions_to_print",
+        "model_init_kwargs",
+        "chat_template_kwargs",
+    }
+
+    kwargs = _build_grpo_config_kwargs(config, tmp_path, supported_fields=supported)
+
+    assert kwargs["per_device_train_batch_size"] == 16
+    assert kwargs["num_generations"] == 4
+    assert kwargs["max_completion_length"] == 2048
+    assert kwargs["epsilon"] == 0.22
+    assert kwargs["num_iterations"] == 2
+    assert kwargs["scale_rewards"] == "none"
+    assert kwargs["loss_type"] == "dapo"
+    assert "gradient_checkpointing_kwargs" not in kwargs
+    assert "max_prompt_length" not in kwargs
 
 
 def test_resolve_config_defaults_reward_equivalence_off(tmp_path):
