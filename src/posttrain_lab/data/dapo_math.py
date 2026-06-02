@@ -197,16 +197,21 @@ def _extract_answer(row):
 
 
 def _stable_id(row, index):
+    source_id = None
     for key in ("raw_problem_id", "id", "uuid", "problem_id"):
         value = row.get(key)
         if value is not None and value != "":
-            return str(value)
+            source_id = str(value)
+            break
     extra_info = row.get("extra_info")
-    if isinstance(extra_info, dict):
+    if source_id is None and isinstance(extra_info, dict):
         value = extra_info.get("index")
         if value is not None and value != "":
-            return str(value)
-    return f"dapo-math-train-{index:06d}"
+            source_id = str(value)
+    if source_id is None:
+        return f"dapo-math-train-{index:06d}"
+    safe_source_id = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in source_id)
+    return f"dapo-math-train-{index:06d}-{safe_source_id}"
 
 
 def _source(row, dataset_name):

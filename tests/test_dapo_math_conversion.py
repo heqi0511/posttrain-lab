@@ -35,8 +35,8 @@ def test_convert_dapo_jsonl_to_rlvr(tmp_path):
     assert validate_file(output_path, "rlvr").ok
 
     staged = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
-    assert staged[0]["id"] == "problem-1"
+    assert staged[0]["id"] == "dapo-math-train-000000-problem-1"
     assert staged[0]["verifier"]["answer"] == "42"
     assert "exactly one final answer in \\boxed{...}" in staged[0]["prompt"][0]["content"]
-    assert staged[1]["id"] == "problem-2"
+    assert staged[1]["id"] == "dapo-math-train-000001-problem-2"
     assert staged[1]["metadata"]["domain"] == "math"

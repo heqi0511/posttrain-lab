@@ -389,6 +389,7 @@ Conversion policy:
 
 - Use `raw_problem` as the user-visible math problem when available.
 - Use `reward_model.ground_truth` as the verifier answer.
+- Prefix staged IDs with the output row index because DAPO raw problem IDs are not globally unique.
 - Wrap each prompt with a stable boxed-answer instruction requiring exactly one final `\boxed{...}` answer.
 - Write only `train` split records because DAPO17k is used as RLVR training data; MATH500, AMC23, and OlympiadBench remain separate eval datasets.
 
