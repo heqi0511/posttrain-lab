@@ -637,4 +637,5 @@ Record training and eval runs here with links to run directories, run cards, res
 - Nexus adaptation: intended `4` GPU launch uses `per_device_train_batch_size=16`, giving a target global prompt batch of about `64` prompts under `torchrun --nproc_per_node=4`.
 - Added multi-GPU Slurm runner: `scripts/slurm/run_grpo_config.sh`.
 - Added submit target: `make submit-qwen25-dapo-grpo`, defaulting to `cbcb-heng`, `gpu:rtx6000ada:4`, `16` CPU, `192G` memory, and `12:00:00` walltime.
+- Server staging check at commit `cedb421`: `make dapo-rlvr-data` produced `17,917` RLVR train rows, schema validation passed, and `make rlvr-qwen25-dapo-dry` confirmed no model loading or training in dry-run mode.
 - Safety: no training was started; no `data/raw`, eval prompts, reward semantics, or existing train/validation/test splits were modified.

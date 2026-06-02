@@ -384,6 +384,7 @@ Default inputs and outputs:
 - Input: `/fs/nexus-scratch/qhe123/datasets/DAPO-Math-Raw-17k/dapo-math-raw-17k.parquet`
 - Output: `data/rlvr_prompts/dapo_math_raw_17k/train.jsonl`
 - Summary: `data/rlvr_prompts/dapo_math_raw_17k/summary.json`
+- Verified generated count on Nexus: `17,917` train rows; schema validation passed.
 
 Conversion policy:
 
