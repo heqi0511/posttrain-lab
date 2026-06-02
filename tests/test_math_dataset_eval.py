@@ -94,6 +94,19 @@ def test_extract_rlvr_verifier_answer():
     assert extract_answer(record) == "12"
 
 
+def test_numeric_zero_id_is_preserved():
+    record = {
+        "id": 0,
+        "question": "Compute 1+1.",
+        "answer": 2,
+    }
+
+    example = normalize_dataset_record(record, dataset_id="AMC23", index=0)
+
+    assert example.id == "0"
+    assert example.answer == "2"
+
+
 def test_format_prompt_requires_single_final_boxed_answer():
     prompt = format_math_prompt("Compute 1+1.")
 

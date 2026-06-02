@@ -228,15 +228,12 @@ def normalize_dataset_record(record: Dict[str, Any], *, dataset_id: str, index: 
     if not answer:
         raise ValueError(f"{dataset_id}:{index}: could not extract answer")
 
-    stable_id = str(
-        record.get("uuid")
-        or record.get("id")
-        or record.get("problem_id")
-        or record.get("raw_problem_id")
-        or record.get("unique_id")
-        or _nested_get(record, ("extra_info", "index"))
-        or f"{dataset_id.replace('/', '__')}-{index:06d}"
-    )
+    stable_id_value = _first_present(record, ("uuid", "id", "problem_id", "raw_problem_id", "unique_id"))
+    if stable_id_value is None:
+        stable_id_value = _nested_get(record, ("extra_info", "index"))
+    if stable_id_value is None or stable_id_value == "":
+        stable_id_value = f"{dataset_id.replace('/', '__')}-{index:06d}"
+    stable_id = str(stable_id_value)
     metadata = {
         key: record.get(key)
         for key in (
@@ -524,6 +521,16 @@ def _nested_get(record: Dict[str, Any], path: Iterable[str]) -> Any:
             return None
         value = value.get(key)
     return value
+
+
+def _first_present(record: Dict[str, Any], keys: Iterable[str]) -> Any:
+    for key in keys:
+        if key not in record:
+            continue
+        value = record[key]
+        if value is not None and value != "":
+            return value
+    return None
 
 
 def _resolve_local_files(dataset_path: Path, *, dataset_format: str, file_glob: str) -> List[Path]:
