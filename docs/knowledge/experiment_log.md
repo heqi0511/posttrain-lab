@@ -392,6 +392,13 @@ Record training and eval runs here with links to run directories, run cards, res
 - Failure diagnosis: `7/8` eval generations had `unclosed_think_block` under `max_new_tokens=2048`; `1/8` parsed but had an answer mismatch. The main remaining issue is long-thinking truncation/format closure, not SFT trainer execution.
 - Manual-review samples: `20` random generations saved; character length range `3203` to `9189`, mean `5694.8`.
 
+### 2026-06-02 Qwen2.5-Math Eval Loader Prep
+
+- Goal: prepare the eval stage for the Qwen2.5-Math-1.5B DAPO-style workflow before training.
+- Change: `math_dataset_eval` now supports local JSONL/JSON/Parquet paths, recursive local dataset directories, RLVR `verifier.answer`, DAPO `reward_model.ground_truth`, OlympiadBench list-style `final_answer`, and an explicit `paper_math` prompt template.
+- Safety: no reward semantics, eval labels, existing baseline prompt, train/validation/test split, or raw data were changed.
+- Smoke checks: `make test-eval`, `make eval-baseline`, and `make eval-qwen25-math-dry` passed locally.
+
 ### 2026-05-29 OpenR1 Qwen3-0.6B Format-Repair SFT
 
 - Goal: continue from the long-context OpenR1 SFT adapter and teach concise final-only boxed outputs before GRPO.

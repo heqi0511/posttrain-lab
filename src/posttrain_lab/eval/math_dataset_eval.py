@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import random
 from collections import Counter
@@ -45,7 +46,10 @@ def main(argv=None):
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Evaluate a causal LM on a sampled math dataset.")
-    parser.add_argument("--dataset-id", required=True)
+    parser.add_argument("--dataset-id", default="local")
+    parser.add_argument("--dataset-path")
+    parser.add_argument("--dataset-format", choices=["auto", "jsonl", "json", "parquet"], default="auto")
+    parser.add_argument("--file-glob", default="**/*.jsonl,**/*.json,**/*.parquet")
     parser.add_argument("--dataset-config", default="default")
     parser.add_argument("--split", default="train")
     parser.add_argument("--model-name", required=True)
@@ -61,6 +65,7 @@ def parse_args(argv=None):
     parser.add_argument("--trust-remote-code", action="store_true")
     parser.add_argument("--no-chat-template", action="store_true")
     parser.add_argument("--enable-thinking", choices=["true", "false", "auto"], default="false")
+    parser.add_argument("--prompt-template", choices=["boxed", "paper_math"], default="boxed")
     parser.add_argument("--allow-symbolic-equivalence", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--save-sample-count", type=int, default=20)
@@ -78,6 +83,9 @@ def run_math_dataset_eval(config: Dict[str, Any]):
     else:
         examples = load_eval_examples(
             dataset_id=config["dataset_id"],
+            dataset_path=config.get("dataset_path"),
+            dataset_format=config.get("dataset_format") or "auto",
+            file_glob=config.get("file_glob") or "**/*.jsonl,**/*.json,**/*.parquet",
             dataset_config=config.get("dataset_config") or "default",
             split=config.get("split") or "train",
             sample_size=int(config.get("sample_size") or 0),
@@ -94,7 +102,10 @@ def run_math_dataset_eval(config: Dict[str, Any]):
     rows = []
 
     for batch in _chunks(examples, int(config.get("batch_size") or 1)):
-        prompts = [format_math_prompt(example.prompt) for example in batch]
+        prompts = [
+            format_math_prompt(example.prompt, template=config.get("prompt_template") or "boxed")
+            for example in batch
+        ]
         generations = generator.generate_batch(prompts)
         for example, completion in zip(batch, generations):
             score = score_math_boxed_v001(completion, example.answer, config=reward_config)
@@ -134,13 +145,33 @@ def run_math_dataset_eval(config: Dict[str, Any]):
 
 def load_eval_examples(
     dataset_id: str,
-    dataset_config: str,
-    split: str,
-    sample_size: int,
-    seed: int,
-    shuffle_buffer_size: int,
+    dataset_path: Optional[str] = None,
+    dataset_format: str = "auto",
+    file_glob: str = "**/*.jsonl,**/*.json,**/*.parquet",
+    dataset_config: str = "default",
+    split: str = "train",
+    sample_size: int = 0,
+    seed: int = 0,
+    shuffle_buffer_size: int = 0,
 ) -> List[EvalExample]:
-    """Load a deterministic streaming sample from a Hugging Face dataset."""
+    """Load a deterministic sample from a local path or Hugging Face dataset."""
+
+    if dataset_path:
+        records = list(
+            iter_local_dataset_records(
+                Path(dataset_path),
+                dataset_format=dataset_format,
+                file_glob=file_glob,
+            )
+        )
+        if shuffle_buffer_size > 1:
+            random.Random(seed).shuffle(records)
+        if sample_size > 0:
+            records = records[:sample_size]
+        return [
+            normalize_dataset_record(record, dataset_id=dataset_id, index=index)
+            for index, record in enumerate(records)
+        ]
 
     try:
         from datasets import load_dataset
@@ -159,6 +190,34 @@ def load_eval_examples(
     return examples
 
 
+def iter_local_dataset_records(
+    dataset_path: Path,
+    *,
+    dataset_format: str = "auto",
+    file_glob: str = "**/*.jsonl,**/*.json,**/*.parquet",
+) -> Iterable[Dict[str, Any]]:
+    """Yield records from local JSONL/JSON/Parquet files without changing data."""
+
+    files = _resolve_local_files(dataset_path, dataset_format=dataset_format, file_glob=file_glob)
+    if not files:
+        raise ValueError(f"no eval data files found under {dataset_path}")
+
+    parquet_files = []
+    for path in files:
+        file_format = _detect_dataset_file_format(path, dataset_format)
+        if file_format == "jsonl":
+            yield from _iter_jsonl_records(path)
+        elif file_format == "json":
+            yield from _iter_json_records(path)
+        elif file_format == "parquet":
+            parquet_files.append(path)
+        else:
+            raise ValueError(f"unsupported eval data file format for {path}")
+
+    if parquet_files:
+        yield from _iter_parquet_records(parquet_files)
+
+
 def normalize_dataset_record(record: Dict[str, Any], *, dataset_id: str, index: int) -> EvalExample:
     """Convert supported math dataset rows into a prompt/answer pair."""
 
@@ -173,18 +232,29 @@ def normalize_dataset_record(record: Dict[str, Any], *, dataset_id: str, index: 
         record.get("uuid")
         or record.get("id")
         or record.get("problem_id")
+        or record.get("raw_problem_id")
+        or record.get("unique_id")
+        or _nested_get(record, ("extra_info", "index"))
         or f"{dataset_id.replace('/', '__')}-{index:06d}"
     )
     metadata = {
         key: record.get(key)
         for key in (
+            "ability",
+            "answer_type",
+            "data_source",
             "source",
             "domain",
             "subject",
+            "subfield",
             "type",
             "task_type",
             "difficulty",
             "level",
+            "language",
+            "is_multiple_answer",
+            "question_type",
+            "unit",
         )
         if key in record
     }
@@ -194,7 +264,7 @@ def normalize_dataset_record(record: Dict[str, Any], *, dataset_id: str, index: 
 def extract_prompt(record: Dict[str, Any]) -> str:
     """Extract a user-visible problem statement from common math dataset schemas."""
 
-    for key in ("problem", "question", "input"):
+    for key in ("raw_problem", "problem", "question", "input"):
         value = record.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
@@ -217,25 +287,39 @@ def extract_answer(record: Dict[str, Any]) -> str:
 
     for key in ("answer", "final_answer", "target"):
         value = record.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-        if value is not None and not isinstance(value, (list, dict)):
-            return str(value).strip()
+        answer = _coerce_answer_text(value)
+        if answer:
+            return answer
+
+    for path in (("verifier", "answer"), ("reward_model", "ground_truth")):
+        answer = _coerce_answer_text(_nested_get(record, path))
+        if answer:
+            return answer
 
     solution = record.get("solution")
-    if isinstance(solution, str) and solution.strip():
-        return solution.strip()
+    answer = _coerce_answer_text(solution)
+    if answer:
+        return answer
     return ""
 
 
-def format_math_prompt(problem: str) -> str:
+def format_math_prompt(problem: str, *, template: str = "boxed") -> str:
     """Use one stable boxed-answer instruction for all sampled datasets."""
 
-    return (
-        "Please solve the following math problem. Put your final answer in exactly "
-        "one \\boxed{...}. Do not write anything after the boxed answer.\n\n"
-        f"Problem:\n{problem}"
-    )
+    if template == "boxed":
+        return (
+            "Please solve the following math problem. Put your final answer in exactly "
+            "one \\boxed{...}. Do not write anything after the boxed answer.\n\n"
+            f"Problem:\n{problem}"
+        )
+    if template == "paper_math":
+        return (
+            "Solve the following math problem step by step. The last line of your "
+            "response must contain exactly one final answer in \\boxed{...}, with "
+            "nothing after the boxed answer.\n\n"
+            f"{problem}"
+        )
+    raise ValueError(f"unsupported prompt template: {template}")
 
 
 class DryRunMathGenerator:
@@ -345,9 +429,11 @@ def summarize_eval_rows(rows: Iterable[Dict[str, Any]], config: Optional[Dict[st
 
     return {
         "dataset_id": config.get("dataset_id") if config else None,
+        "dataset_path": config.get("dataset_path") if config else None,
         "dataset_config": config.get("dataset_config") if config else None,
         "split": config.get("split") if config else None,
         "model_name": config.get("model_name") if config else None,
+        "prompt_template": config.get("prompt_template") if config else None,
         "sample_size": total,
         "seed": config.get("seed") if config else None,
         "accuracy": _mean(reward_values),
@@ -391,6 +477,117 @@ def _messages_to_text(value: Any) -> str:
                 parts.append(content)
         return "\n".join(parts).strip()
     return ""
+
+
+def _coerce_answer_text(value: Any) -> str:
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return ""
+        parsed = _parse_stringified_scalar_list(stripped)
+        return parsed if parsed is not None else stripped
+    if isinstance(value, list):
+        cleaned = [_coerce_answer_text(item) for item in value]
+        cleaned = [item for item in cleaned if item]
+        if not cleaned:
+            return ""
+        if len(cleaned) == 1:
+            return cleaned[0]
+        return ", ".join(cleaned)
+    if value is not None and not isinstance(value, dict):
+        return str(value).strip()
+    return ""
+
+
+def _parse_stringified_scalar_list(value: str) -> Optional[str]:
+    if not (value.startswith("[") and value.endswith("]")):
+        return None
+    try:
+        parsed = ast.literal_eval(value)
+    except (SyntaxError, ValueError):
+        return None
+    if not isinstance(parsed, list):
+        return None
+    cleaned = [_coerce_answer_text(item) for item in parsed]
+    cleaned = [item for item in cleaned if item]
+    if len(cleaned) == 1:
+        return cleaned[0]
+    if len(cleaned) > 1:
+        return ", ".join(cleaned)
+    return ""
+
+
+def _nested_get(record: Dict[str, Any], path: Iterable[str]) -> Any:
+    value: Any = record
+    for key in path:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def _resolve_local_files(dataset_path: Path, *, dataset_format: str, file_glob: str) -> List[Path]:
+    if dataset_path.is_file():
+        return [dataset_path]
+    if not dataset_path.exists():
+        raise FileNotFoundError(f"eval dataset path does not exist: {dataset_path}")
+    patterns = [pattern.strip() for pattern in file_glob.split(",") if pattern.strip()]
+    files: List[Path] = []
+    for pattern in patterns:
+        files.extend(path for path in dataset_path.glob(pattern) if path.is_file())
+    files = sorted(set(files))
+    if dataset_format != "auto":
+        files = [path for path in files if _detect_dataset_file_format(path, dataset_format) == dataset_format]
+    return files
+
+
+def _detect_dataset_file_format(path: Path, dataset_format: str) -> str:
+    if dataset_format != "auto":
+        return dataset_format
+    suffix = path.suffix.lower()
+    if suffix == ".jsonl":
+        return "jsonl"
+    if suffix == ".json":
+        return "json"
+    if suffix == ".parquet":
+        return "parquet"
+    return ""
+
+
+def _iter_jsonl_records(path: Path) -> Iterable[Dict[str, Any]]:
+    with path.open("r", encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{path}:{line_number}: invalid JSON: {exc.msg}") from exc
+            if not isinstance(record, dict):
+                raise ValueError(f"{path}:{line_number}: expected JSON object")
+            yield record
+
+
+def _iter_json_records(path: Path) -> Iterable[Dict[str, Any]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+        payload = payload["data"]
+    if not isinstance(payload, list):
+        raise ValueError(f"{path}: expected a JSON list or object with a data list")
+    for index, record in enumerate(payload, start=1):
+        if not isinstance(record, dict):
+            raise ValueError(f"{path}:{index}: expected JSON object")
+        yield record
+
+
+def _iter_parquet_records(paths: List[Path]) -> Iterable[Dict[str, Any]]:
+    try:
+        from datasets import load_dataset
+    except ImportError as exc:
+        raise RuntimeError("datasets is required to load local parquet eval files") from exc
+    dataset = load_dataset("parquet", data_files=[str(path) for path in paths], split="train")
+    for record in dataset:
+        yield dict(record)
 
 
 def _torch_dtype(name):
@@ -441,9 +638,11 @@ def _write_report(path: Path, summary: Dict[str, Any], config: Dict[str, Any]):
         "# Math Dataset Eval Report",
         "",
         f"- dataset: `{summary['dataset_id']}`",
+        f"- dataset_path: `{summary.get('dataset_path')}`",
         f"- dataset_config: `{summary['dataset_config']}`",
         f"- split: `{summary['split']}`",
         f"- model: `{summary['model_name']}`",
+        f"- prompt_template: `{summary.get('prompt_template')}`",
         f"- sample_size: `{summary['sample_size']}`",
         f"- seed: `{summary['seed']}`",
         f"- max_new_tokens: `{config.get('max_new_tokens')}`",

@@ -101,9 +101,23 @@ python -m posttrain_lab.eval.math_dataset_eval \
   --trust-remote-code
 ```
 
+Local dataset smoke shape:
+
+```bash
+python -m posttrain_lab.eval.math_dataset_eval \
+  --dataset-id local-rlvr-fixture \
+  --dataset-path tests/fixtures/rlvr_good.jsonl \
+  --dataset-format jsonl \
+  --model-name dummy \
+  --output-dir /tmp/posttrain_lab_qwen25_math_eval \
+  --prompt-template paper_math \
+  --dry-run
+```
+
 Evaluation policy:
 
 - Use a fixed seed and record `sample_size`, dataset id/config/split, model id, decoding settings, and thinking mode.
+- For local paper-style evals, record `dataset_path`, `dataset_format`, and `prompt_template`; use `paper_math` only as an explicit run setting, not as a silent replacement for existing baselines.
 - Score with the existing `math_boxed_v001` reward; do not change reward semantics for dataset comparisons.
 - Save `raw_generations.jsonl`, `sample_generations.jsonl`, `eval_summary.json`, and `eval_report.md`.
 - Treat accuracy as strict boxed-answer accuracy. It is useful for RLVR readiness but may undercount mathematically equivalent answers not normalized by the current reward.

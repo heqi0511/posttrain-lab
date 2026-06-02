@@ -1,4 +1,4 @@
-.PHONY: format lint test test-rewards test-eval validate-data validate-sympy-boxed-data build-sympy-boxed-data openr1-level-rlvr-data openr1-cn-math-data openr1-cn-math-single-expr-data check-leakage eval-baseline eval-math-dataset-dry sft-smoke sft-openr1-math-1k sft-openr1-math-1k-long sft-openr1-format-repair sft-qwen3-4b-format-repair-tiny sft-qwen3-4b-sympy-boxed-smoke sft-qwen3-4b-sympy-boxed-full sft-qwen3-4b-cn-math sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
+.PHONY: format lint test test-rewards test-eval validate-data validate-sympy-boxed-data build-sympy-boxed-data openr1-level-rlvr-data openr1-cn-math-data openr1-cn-math-single-expr-data check-leakage eval-baseline eval-math-dataset-dry eval-qwen25-math-dry sft-smoke sft-openr1-math-1k sft-openr1-math-1k-long sft-openr1-format-repair sft-qwen3-4b-format-repair-tiny sft-qwen3-4b-sympy-boxed-smoke sft-qwen3-4b-sympy-boxed-full sft-qwen3-4b-cn-math sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
 PYTHON ?= python3
 RUN_FRONTIER_AUDIT ?= 0
 SYMPY_BOXED_DATA_DIR ?= data/staged/openr1_deepmath_sympy_boxed_v1
@@ -76,6 +76,9 @@ eval-baseline:
 
 eval-math-dataset-dry:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.eval.math_dataset_eval --dataset-id dummy --dataset-config default --split train --model-name dummy --output-dir /tmp/posttrain_lab_math_dataset_eval --sample-size 1 --dry-run
+
+eval-qwen25-math-dry:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.eval.math_dataset_eval --dataset-id local-rlvr-fixture --dataset-path tests/fixtures/rlvr_good.jsonl --dataset-format jsonl --split train --model-name dummy --output-dir /tmp/posttrain_lab_qwen25_math_eval --sample-size 2 --shuffle-buffer-size 1 --prompt-template paper_math --max-new-tokens 16 --dry-run --save-sample-count 2
 
 sft-smoke: eval-baseline
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.train.train_sft --config configs/sft/smoke_1k.yaml
