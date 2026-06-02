@@ -65,6 +65,57 @@ def math_boxed_v001(
     return score_math_boxed_v001(completion, answer, config=config).score
 
 
+def compute_score(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """verl-compatible adapter for ``math_boxed_v001``.
+
+    Supported call forms:
+    - ``compute_score(solution_str, ground_truth)``
+    - ``compute_score(data_source=..., solution_str=..., ground_truth=..., extra_info=...)``
+    - ``compute_score(data_source, solution_str, ground_truth, extra_info)``
+
+    The adapter unwraps dataset-provided reference lists, but the completion
+    parser and reward semantics remain exactly those of ``math_boxed_v001``.
+    """
+
+    solution_str, ground_truth, data_source, _, config = _parse_compute_score_args(args, kwargs)
+    candidates = _ground_truth_candidates(ground_truth)
+    if not candidates:
+        return {
+            "score": 0.0,
+            "reason": "missing_ground_truth",
+            "reward_version": REWARD_VERSION,
+            "extracted_answer": None,
+            "normalized_prediction": None,
+            "normalized_answer": None,
+            "ground_truth_index": None,
+            "num_ground_truths": 0,
+            "data_source": data_source,
+        }
+
+    best_index = 0
+    best_result: Optional[MathRewardResult] = None
+    for index, candidate in enumerate(candidates):
+        result = score_math_boxed_v001(solution_str, candidate, config=config)
+        if best_result is None or result.score > best_result.score:
+            best_index = index
+            best_result = result
+        if result.score == 1.0:
+            break
+
+    assert best_result is not None
+    return {
+        "score": best_result.score,
+        "reason": best_result.reason,
+        "reward_version": best_result.version,
+        "extracted_answer": best_result.extracted_answer,
+        "normalized_prediction": best_result.normalized_prediction,
+        "normalized_answer": best_result.normalized_answer,
+        "ground_truth_index": best_index,
+        "num_ground_truths": len(candidates),
+        "data_source": data_source,
+    }
+
+
 def score_math_boxed(completion: str, expected_answer: str, symbolic: bool = False) -> RewardResult:
     """Compatibility wrapper that keeps the strict v001 reward unchanged.
 
@@ -94,6 +145,60 @@ def score_math_boxed(completion: str, expected_answer: str, symbolic: bool = Fal
     if symbolic and _symbolically_equivalent(parsed_answer, normalized_expected):
         return RewardResult(1.0, parsed_answer, None)
     return RewardResult(0.0, parsed_answer, "answer_mismatch")
+
+
+def _parse_compute_score_args(
+    args: Tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> Tuple[str, Any, Optional[str], Any, MathRewardConfig]:
+    remaining = dict(kwargs)
+    config = remaining.pop("config", None) or MathRewardConfig()
+    data_source = remaining.pop("data_source", None)
+    solution_str = remaining.pop("solution_str", None)
+    ground_truth = remaining.pop("ground_truth", None)
+    extra_info = remaining.pop("extra_info", None)
+
+    if len(args) == 2:
+        if solution_str is not None or ground_truth is not None:
+            raise TypeError("compute_score received duplicate solution_str or ground_truth")
+        solution_str, ground_truth = args
+    elif len(args) == 4:
+        has_duplicate = (
+            data_source is not None
+            or solution_str is not None
+            or ground_truth is not None
+            or extra_info is not None
+        )
+        if has_duplicate:
+            raise TypeError("compute_score received duplicate verl reward arguments")
+        data_source, solution_str, ground_truth, extra_info = args
+    elif args:
+        raise TypeError("compute_score expects either 2 positional args or verl keyword args")
+
+    if solution_str is None:
+        solution_str = ""
+    if data_source is not None:
+        data_source = str(data_source)
+    if not isinstance(config, MathRewardConfig):
+        raise TypeError("config must be a MathRewardConfig")
+    return str(solution_str), ground_truth, data_source, extra_info, config
+
+
+def _ground_truth_candidates(ground_truth: Any) -> List[str]:
+    if isinstance(ground_truth, dict) and "ground_truth" in ground_truth:
+        return _ground_truth_candidates(ground_truth["ground_truth"])
+    if ground_truth is None:
+        return []
+    if isinstance(ground_truth, str):
+        value = ground_truth.strip()
+        return [value] if value else []
+    if isinstance(ground_truth, (list, tuple, set)):
+        candidates: List[str] = []
+        for item in ground_truth:
+            candidates.extend(_ground_truth_candidates(item))
+        return candidates
+    value = str(ground_truth).strip()
+    return [value] if value else []
 
 
 def score_math_boxed_v001(
@@ -362,9 +467,8 @@ def _parse_latex_sympy_object(expression: str, config: MathRewardConfig) -> Opti
         return None
     if _contains_sympy_rejected_syntax(expression):
         return None
-    try:
-        from latex2sympy2 import latex2sympy
-    except ImportError:
+    latex2sympy = _load_latex2sympy()
+    if latex2sympy is None:
         return None
     try:
         parsed = latex2sympy(expression)
@@ -373,6 +477,18 @@ def _parse_latex_sympy_object(expression: str, config: MathRewardConfig) -> Opti
     if not _sympy_object_is_bounded(parsed, config):
         return None
     return parsed
+
+
+def _load_latex2sympy() -> Optional[Any]:
+    for module_name in ("latex2sympy2_extended", "latex2sympy2"):
+        try:
+            module = __import__(module_name, fromlist=["latex2sympy"])
+        except ImportError:
+            continue
+        latex2sympy = getattr(module, "latex2sympy", None)
+        if latex2sympy is not None:
+            return latex2sympy
+    return None
 
 
 def _contains_sympy_rejected_syntax(expression: str) -> bool:

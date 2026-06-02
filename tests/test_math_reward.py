@@ -1,4 +1,6 @@
 import json
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,7 @@ from posttrain_lab.rewards.math_reward import (
     normalize_math_answer,
     score_math_boxed_v001,
 )
+import posttrain_lab.rewards.math_reward as math_reward
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "rewards" / "math_boxed_v001_cases.jsonl"
@@ -43,6 +46,54 @@ def test_normalize_math_answer_removes_simple_latex_noise():
 def test_math_boxed_v001_returns_float_score():
     assert math_boxed_v001(r"\boxed{4}", "4") == 1.0
     assert math_boxed_v001(r"\boxed{5}", "4") == 0.0
+
+
+def test_verl_compute_score_accepts_keyword_signature_and_list_ground_truth():
+    result = math_reward.compute_score(
+        data_source="olympiad_bench_boxed",
+        solution_str=r"Final answer: \boxed{2}",
+        ground_truth=["2"],
+        extra_info={"index": 0},
+    )
+
+    assert result["score"] == 1.0
+    assert result["reason"] == "exact_match"
+    assert result["reward_version"] == "math_boxed_v001"
+    assert result["ground_truth_index"] == 0
+    assert result["data_source"] == "olympiad_bench_boxed"
+
+
+def test_verl_compute_score_rejects_multiple_boxed_answers():
+    result = math_reward.compute_score(
+        r"Check \boxed{4}. Final \boxed{4}",
+        "4",
+    )
+
+    assert result["score"] == 0.0
+    assert result["reason"] == "multiple_boxed_answers"
+
+
+def test_sympy_engine_uses_latex2sympy2_extended_fallback(monkeypatch):
+    monkeypatch.setitem(sys.modules, "latex2sympy2", None)
+
+    fake_extended = types.ModuleType("latex2sympy2_extended")
+
+    def fake_latex2sympy(expression):
+        import sympy
+
+        return sympy.sympify(expression.replace("^", "**"))
+
+    fake_extended.latex2sympy = fake_latex2sympy
+    monkeypatch.setitem(sys.modules, "latex2sympy2_extended", fake_extended)
+
+    result = score_math_boxed_v001(
+        r"\boxed{2*x+2}",
+        "2*(x+1)",
+        config=MathRewardConfig(allow_symbolic_equivalence=True, symbolic_equivalence_engine="sympy"),
+    )
+
+    assert result.score == 1.0
+    assert result.reason == "sympy_equivalence"
 
 
 def test_malformed_box_before_valid_answer_is_rejected():
