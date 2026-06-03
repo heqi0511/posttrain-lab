@@ -674,3 +674,19 @@ Record training and eval runs here with links to run directories, run cards, res
 - Interpretation: adding `<|im_end|>` improved smoke behavior and cut full-eval walltime roughly in half, but full MATH500 accuracy only moved from `27.0%` to `29.0%`. The remaining gap is mostly model behavior: long wrong completions, prompt/task drift, missing final boxed answers, and truncation, not just parser equivalence.
 - Comparability caveat: the paper reports Qwen2.5-Math results as average Pass@1 over `16` validation samples. This run is a single-sample evaluation, so it is useful as a local baseline but is not a full replication of the paper's reported protocol.
 - Safety: no `data/raw` files, MATH500 prompts/answers, reward semantics, or train/validation/test splits were modified.
+
+### 2026-06-03 Qwen2.5-Math-1.5B MATH500 Eval Diagnostic Sweep
+
+- Goal: diagnose why the initial paper-like MATH500 full eval was much lower than the paper's reported Qwen2.5-Math-1.5B MATH500 accuracy.
+- Code commit: `5193d14`, which adds an optional `paper_dapo` prompt template and `num_samples_per_example` / `pass_at_n` reporting to the math eval runner. Defaults remain unchanged.
+- Dataset/model: same read-only MATH500 test parquet and `/fs/nexus-scratch/qhe123/models/Qwen2.5-Math-1.5B`.
+- Common eval settings: `max_new_tokens=2048`, `top_p=1.0`, `extra_eos_token=<|im_end|>`, `reward_version=math_boxed_verl_v001`, `allow_symbolic_equivalence=true`, `symbolic_equivalence_engine=sympy`, chat template enabled.
+- Slurm smoke: job `6959907`, `5` MATH500 examples with `paper_dapo`, `temperature=0.8`, passed with accuracy `0.60`, format success `1.0`, parse failure `0.0`.
+- Slurm sweep: job `6959912`, completed in `00:34:18`; output root `/fs/nexus-scratch/qhe123/posttrain-lab-worktrees/5193d14-math500-diagnostics/runs/eval/`.
+- `paper_math`, `temperature=0.8`, `100` examples, `1` sample/example: accuracy `0.35`, format success `0.84`, parse failure `0.16`, truncation `0.20`, avg completion length `928.89` tokens.
+- `paper_dapo`, `temperature=0.8`, `100` examples, `1` sample/example: accuracy `0.47`, format success `0.93`, parse failure `0.07`, truncation `0.11`, avg completion length `775.23` tokens.
+- `paper_dapo`, greedy `temperature=0.0`, `100` examples, `1` sample/example: accuracy `0.61`, format success `0.93`, parse failure `0.07`, truncation `0.05`, avg completion length `609.33` tokens.
+- `paper_dapo`, `temperature=0.8`, `50` examples, `16` samples/example: completion-level accuracy `0.46125`, prompt-level `pass_at_16=0.86`, format success `0.94125`, parse failure `0.05875`, truncation `0.1075`, avg completion length `708.77` tokens.
+- `16`-sample prompt buckets over `50` examples: all wrong `7/50`, mixed `42/50`, all correct `1/50`. Correct-count histogram ranged from `0` to `16`, showing high sampling variance.
+- Interpretation: the original `29%` full-eval result was largely a protocol mismatch. The DAPO-style prompt alone improves the first-100 single-sample result from `35%` to `47%`; greedy decoding on the same first-100 examples reaches `61%`; and 16 sampled completions reach `86%` pass@16 on the first 50 examples. Remaining differences from the paper require a full 500-example, 16-sample eval and confirmation of the paper's exact aggregation/parser.
+- Safety: no `data/raw` files, MATH500 prompts/answers, reward semantics, or train/validation/test splits were modified.
