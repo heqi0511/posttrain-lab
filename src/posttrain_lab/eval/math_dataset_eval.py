@@ -55,6 +55,7 @@ def parse_args(argv=None):
     parser.add_argument("--model-name", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--sample-size", type=int, default=50)
+    parser.add_argument("--num-samples-per-example", type=int, default=1)
     parser.add_argument("--seed", type=int, default=20260529)
     parser.add_argument("--shuffle-buffer-size", type=int, default=5000)
     parser.add_argument("--max-new-tokens", type=int, default=2048)
@@ -66,7 +67,7 @@ def parse_args(argv=None):
     parser.add_argument("--no-chat-template", action="store_true")
     parser.add_argument("--extra-eos-token", action="append", default=[])
     parser.add_argument("--enable-thinking", choices=["true", "false", "auto"], default="false")
-    parser.add_argument("--prompt-template", choices=["boxed", "paper_math"], default="boxed")
+    parser.add_argument("--prompt-template", choices=["boxed", "paper_math", "paper_dapo"], default="boxed")
     parser.add_argument("--reward-version", default="math_boxed_v001")
     parser.add_argument("--allow-symbolic-equivalence", action="store_true")
     parser.add_argument(
@@ -109,13 +110,23 @@ def run_math_dataset_eval(config: Dict[str, Any]):
     )
     rows = []
 
-    for batch in _chunks(examples, int(config.get("batch_size") or 1)):
+    num_samples_per_example = int(config.get("num_samples_per_example") or 1)
+    if num_samples_per_example < 1:
+        raise ValueError("num_samples_per_example must be >= 1")
+
+    eval_tasks = [
+        (example, sample_index)
+        for example in examples
+        for sample_index in range(num_samples_per_example)
+    ]
+
+    for batch in _chunks(eval_tasks, int(config.get("batch_size") or 1)):
         prompts = [
             format_math_prompt(example.prompt, template=config.get("prompt_template") or "boxed")
-            for example in batch
+            for example, _ in batch
         ]
         generations = generator.generate_batch(prompts)
-        for example, completion in zip(batch, generations):
+        for (example, sample_index), completion in zip(batch, generations):
             score = score_math_boxed_by_version(
                 completion,
                 example.answer,
@@ -129,6 +140,8 @@ def run_math_dataset_eval(config: Dict[str, Any]):
                     "dataset_id": config["dataset_id"],
                     "dataset_config": config.get("dataset_config") or "default",
                     "split": config.get("split") or "train",
+                    "sample_index": sample_index,
+                    "num_samples_per_example": num_samples_per_example,
                     "prompt": example.prompt,
                     "answer": example.answer,
                     "completion": completion,
@@ -329,6 +342,11 @@ def format_math_prompt(problem: str, *, template: str = "boxed") -> str:
             "nothing after the boxed answer.\n\n"
             f"{problem}"
         )
+    if template == "paper_dapo":
+        return (
+            f"{problem}\n\n"
+            "Let's think step by step and output the final answer within \\boxed{}."
+        )
     raise ValueError(f"unsupported prompt template: {template}")
 
 
@@ -456,6 +474,22 @@ def summarize_eval_rows(rows: Iterable[Dict[str, Any]], config: Optional[Dict[st
         str(row.get("metadata", {}).get("subject") or row.get("metadata", {}).get("domain") or "unknown")
         for row in rows
     )
+    rows_by_example: Dict[str, List[Dict[str, Any]]] = {}
+    for index, row in enumerate(rows):
+        rows_by_example.setdefault(str(row.get("id", f"row-{index}")), []).append(row)
+    example_count = len(rows_by_example)
+    pass_at_n = _mean(
+        float(any(float(row["reward"]) == 1.0 for row in example_rows))
+        for example_rows in rows_by_example.values()
+    )
+    all_correct_prompt_rate = _mean(
+        float(all(float(row["reward"]) == 1.0 for row in example_rows))
+        for example_rows in rows_by_example.values()
+    )
+    all_wrong_prompt_rate = _mean(
+        float(all(float(row["reward"]) != 1.0 for row in example_rows))
+        for example_rows in rows_by_example.values()
+    )
 
     return {
         "dataset_id": config.get("dataset_id") if config else None,
@@ -465,9 +499,15 @@ def summarize_eval_rows(rows: Iterable[Dict[str, Any]], config: Optional[Dict[st
         "model_name": config.get("model_name") if config else None,
         "prompt_template": config.get("prompt_template") if config else None,
         "sample_size": total,
+        "num_examples": example_count,
+        "num_completions": total,
+        "num_samples_per_example": config.get("num_samples_per_example") if config else None,
         "seed": config.get("seed") if config else None,
         "accuracy": _mean(full_credit_values),
         "full_credit_accuracy": _mean(full_credit_values),
+        "pass_at_n": pass_at_n,
+        "all_correct_prompt_rate": all_correct_prompt_rate,
+        "all_wrong_prompt_rate": all_wrong_prompt_rate,
         "reward_mean": _mean(reward_values),
         "format_success_rate": 1.0 - _mean(parse_failures) if total else None,
         "parse_failure_rate": _mean(parse_failures),
@@ -698,6 +738,9 @@ def _write_report(path: Path, summary: Dict[str, Any], config: Dict[str, Any]):
         "accuracy",
         "format_success_rate",
         "parse_failure_rate",
+        "pass_at_n",
+        "all_correct_prompt_rate",
+        "all_wrong_prompt_rate",
         "correctness_given_parse",
         "answer_mismatch_rate",
         "truncation_rate",

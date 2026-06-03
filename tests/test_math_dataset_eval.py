@@ -124,6 +124,14 @@ def test_paper_math_prompt_template_is_explicitly_selectable():
     assert "nothing after the boxed answer" in prompt
 
 
+def test_paper_dapo_prompt_template_matches_paper_suffix():
+    prompt = format_math_prompt("Compute 1+1.", template="paper_dapo")
+
+    assert prompt.startswith("Compute 1+1.")
+    assert "Let's think step by step" in prompt
+    assert "within \\boxed{}" in prompt
+
+
 def test_parse_args_accepts_symbolic_equivalence_engine():
     args = parse_args(
         [
@@ -154,6 +162,21 @@ def test_parse_args_accepts_extra_eos_tokens():
     )
 
     assert args.extra_eos_token == ["<|im_end|>"]
+
+
+def test_parse_args_accepts_num_samples_per_example():
+    args = parse_args(
+        [
+            "--model-name",
+            "dummy-model",
+            "--output-dir",
+            "runs/eval/dummy",
+            "--num-samples-per-example",
+            "16",
+        ]
+    )
+
+    assert args.num_samples_per_example == 16
 
 
 def test_load_local_jsonl_eval_examples(tmp_path):
@@ -263,6 +286,60 @@ def test_summarize_eval_rows_keeps_partial_reward_out_of_accuracy():
     assert summary["accuracy"] == 0.5
     assert summary["full_credit_accuracy"] == 0.5
     assert summary["reward_mean"] == pytest.approx(0.55)
+
+
+def test_summarize_eval_rows_reports_pass_at_n_by_example():
+    rows = [
+        {
+            "id": "a",
+            "reward": 0.0,
+            "reason": "format_correct_answer_mismatch",
+            "parse_failed": False,
+            "completion_chars": 10,
+            "completion_tokens": 2,
+            "truncated": False,
+            "metadata": {},
+        },
+        {
+            "id": "a",
+            "reward": 1.0,
+            "reason": "exact_match",
+            "parse_failed": False,
+            "completion_chars": 10,
+            "completion_tokens": 2,
+            "truncated": False,
+            "metadata": {},
+        },
+        {
+            "id": "b",
+            "reward": 0.0,
+            "reason": "no_boxed_answer",
+            "parse_failed": True,
+            "completion_chars": 10,
+            "completion_tokens": 2,
+            "truncated": False,
+            "metadata": {},
+        },
+        {
+            "id": "b",
+            "reward": 0.0,
+            "reason": "format_correct_answer_mismatch",
+            "parse_failed": False,
+            "completion_chars": 10,
+            "completion_tokens": 2,
+            "truncated": False,
+            "metadata": {},
+        },
+    ]
+
+    summary = summarize_eval_rows(rows, {"num_samples_per_example": 2})
+
+    assert summary["num_examples"] == 2
+    assert summary["num_completions"] == 4
+    assert summary["accuracy"] == 0.25
+    assert summary["pass_at_n"] == 0.5
+    assert summary["all_correct_prompt_rate"] == 0.0
+    assert summary["all_wrong_prompt_rate"] == 0.5
 
 
 def test_dry_run_math_dataset_eval_writes_artifacts(monkeypatch, tmp_path):
