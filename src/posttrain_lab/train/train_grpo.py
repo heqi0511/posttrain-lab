@@ -443,6 +443,8 @@ def _build_grpo_config_kwargs(config, output_dir, supported_fields=None):
     for key, value in optional.items():
         if value is not None:
             kwargs[key] = value
+    if kwargs.get("generation_batch_size") is not None and kwargs.get("steps_per_generation") is not None:
+        kwargs.pop("steps_per_generation")
 
     return {
         key: value

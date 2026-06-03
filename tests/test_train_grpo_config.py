@@ -176,6 +176,7 @@ def test_qwen25_dapo_one_epoch_8gpu_config_records_small_batch_plan():
     assert resolved["rollout"]["temperature"] == 0.8
     assert resolved["rollout"]["epsilon"] == 0.22
     assert resolved["rollout"]["loss_type"] == "dapo"
+    assert resolved["rollout"]["steps_per_generation"] is None
     assert resolved["rollout_format_gate"]["sample_count"] == 4
     assert resolved["rollout_format_gate"]["sample_rollout_generations"] == 1
     assert resolved["rollout_format_gate"]["max_completion_length"] == 512
@@ -269,8 +270,45 @@ def test_build_grpo_config_kwargs_passes_optional_trl_fields(tmp_path):
     assert kwargs["num_iterations"] == 2
     assert kwargs["scale_rewards"] == "none"
     assert kwargs["loss_type"] == "dapo"
+    assert "steps_per_generation" in kwargs
+    assert "generation_batch_size" not in kwargs
     assert "gradient_checkpointing_kwargs" not in kwargs
     assert "max_prompt_length" not in kwargs
+
+
+def test_build_grpo_config_kwargs_prefers_generation_batch_size_over_steps_per_generation(tmp_path):
+    config = _resolve_config(load_config("configs/rlvr/qwen25_math_1_5b_dapo_grpo_one_epoch_8gpu.yaml"))
+    config["rollout"]["steps_per_generation"] = 1
+    supported = {
+        "output_dir",
+        "max_steps",
+        "per_device_train_batch_size",
+        "gradient_accumulation_steps",
+        "learning_rate",
+        "logging_steps",
+        "logging_first_step",
+        "save_steps",
+        "save_total_limit",
+        "save_strategy",
+        "report_to",
+        "seed",
+        "bf16",
+        "fp16",
+        "gradient_checkpointing",
+        "num_generations",
+        "max_completion_length",
+        "temperature",
+        "top_p",
+        "top_k",
+        "beta",
+        "steps_per_generation",
+        "generation_batch_size",
+    }
+
+    kwargs = _build_grpo_config_kwargs(config, tmp_path, supported_fields=supported)
+
+    assert kwargs["generation_batch_size"] == 32
+    assert "steps_per_generation" not in kwargs
 
 
 def test_resolve_config_defaults_reward_equivalence_off(tmp_path):

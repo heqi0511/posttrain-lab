@@ -51,7 +51,7 @@ rollout:
   num_iterations: 2
   loss_type: dapo
   scale_rewards: none
-  steps_per_generation: 1
+  steps_per_generation: null
   generation_batch_size: 32
   ds3_gather_for_generation: true
   mask_truncated_completions: true
