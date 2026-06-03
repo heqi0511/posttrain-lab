@@ -8,6 +8,7 @@ from posttrain_lab.eval.math_dataset_eval import (
     format_math_prompt,
     load_eval_examples,
     normalize_dataset_record,
+    parse_args,
     run_math_dataset_eval,
     summarize_eval_rows,
 )
@@ -121,6 +122,23 @@ def test_paper_math_prompt_template_is_explicitly_selectable():
     assert "step by step" in prompt
     assert "exactly one final answer in \\boxed{...}" in prompt
     assert "nothing after the boxed answer" in prompt
+
+
+def test_parse_args_accepts_symbolic_equivalence_engine():
+    args = parse_args(
+        [
+            "--model-name",
+            "dummy-model",
+            "--output-dir",
+            "runs/eval/dummy",
+            "--allow-symbolic-equivalence",
+            "--symbolic-equivalence-engine",
+            "sympy",
+        ]
+    )
+
+    assert args.allow_symbolic_equivalence is True
+    assert args.symbolic_equivalence_engine == "sympy"
 
 
 def test_load_local_jsonl_eval_examples(tmp_path):

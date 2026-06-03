@@ -68,6 +68,11 @@ def parse_args(argv=None):
     parser.add_argument("--prompt-template", choices=["boxed", "paper_math"], default="boxed")
     parser.add_argument("--reward-version", default="math_boxed_v001")
     parser.add_argument("--allow-symbolic-equivalence", action="store_true")
+    parser.add_argument(
+        "--symbolic-equivalence-engine",
+        choices=["fraction", "sympy", "latex2sympy2"],
+        default="fraction",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--save-sample-count", type=int, default=20)
     return parser.parse_args(argv)
@@ -98,7 +103,8 @@ def run_math_dataset_eval(config: Dict[str, Any]):
 
     generator = DryRunMathGenerator() if config.get("dry_run") else HFBatchedMathGenerator(config)
     reward_config = MathRewardConfig(
-        allow_symbolic_equivalence=bool(config.get("allow_symbolic_equivalence", False))
+        allow_symbolic_equivalence=bool(config.get("allow_symbolic_equivalence", False)),
+        symbolic_equivalence_engine=str(config.get("symbolic_equivalence_engine") or "fraction"),
     )
     rows = []
 
