@@ -64,6 +64,7 @@ def parse_args(argv=None):
     parser.add_argument("--torch-dtype", default="auto")
     parser.add_argument("--trust-remote-code", action="store_true")
     parser.add_argument("--no-chat-template", action="store_true")
+    parser.add_argument("--extra-eos-token", action="append", default=[])
     parser.add_argument("--enable-thinking", choices=["true", "false", "auto"], default="false")
     parser.add_argument("--prompt-template", choices=["boxed", "paper_math"], default="boxed")
     parser.add_argument("--reward-version", default="math_boxed_v001")
@@ -364,6 +365,7 @@ class HFBatchedMathGenerator:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.tokenizer.padding_side = "left"
+        self.eos_token_ids = self._resolve_eos_token_ids(config)
 
         model_kwargs = {"trust_remote_code": trust_remote_code}
         dtype = _torch_dtype(config.get("torch_dtype"))
@@ -386,7 +388,7 @@ class HFBatchedMathGenerator:
             "do_sample": do_sample,
             "max_new_tokens": self.max_new_tokens,
             "pad_token_id": self.tokenizer.pad_token_id,
-            "eos_token_id": self.tokenizer.eos_token_id,
+            "eos_token_id": self.eos_token_ids,
         }
         if do_sample:
             generation_kwargs["temperature"] = temperature
@@ -404,6 +406,24 @@ class HFBatchedMathGenerator:
 
     def count_completion_tokens(self, completion: str) -> int:
         return len(self.tokenizer(completion, add_special_tokens=False)["input_ids"])
+
+    def _resolve_eos_token_ids(self, config: Dict[str, Any]) -> int | List[int] | None:
+        token_ids = []
+        if self.tokenizer.eos_token_id is not None:
+            token_ids.append(int(self.tokenizer.eos_token_id))
+        for token in config.get("extra_eos_token") or []:
+            token_id = self.tokenizer.convert_tokens_to_ids(token)
+            if token_id is None:
+                raise ValueError(f"could not resolve extra eos token: {token}")
+            if token_id == self.tokenizer.unk_token_id and token != self.tokenizer.unk_token:
+                raise ValueError(f"unknown extra eos token: {token}")
+            token_ids.append(int(token_id))
+        unique_token_ids = list(dict.fromkeys(token_ids))
+        if not unique_token_ids:
+            return None
+        if len(unique_token_ids) == 1:
+            return unique_token_ids[0]
+        return unique_token_ids
 
     def _render_prompt(self, prompt: str) -> str:
         if self.apply_chat_template:

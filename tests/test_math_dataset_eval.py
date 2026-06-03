@@ -141,6 +141,21 @@ def test_parse_args_accepts_symbolic_equivalence_engine():
     assert args.symbolic_equivalence_engine == "sympy"
 
 
+def test_parse_args_accepts_extra_eos_tokens():
+    args = parse_args(
+        [
+            "--model-name",
+            "dummy-model",
+            "--output-dir",
+            "runs/eval/dummy",
+            "--extra-eos-token",
+            "<|im_end|>",
+        ]
+    )
+
+    assert args.extra_eos_token == ["<|im_end|>"]
+
+
 def test_load_local_jsonl_eval_examples(tmp_path):
     data_path = tmp_path / "eval.jsonl"
     data_path.write_text(
