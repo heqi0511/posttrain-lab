@@ -62,7 +62,12 @@ def parse_args(argv=None):
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--inference-backend", choices=["hf", "vllm"], default="hf")
     parser.add_argument("--torch-dtype", default="auto")
+    parser.add_argument("--vllm-dtype", default=None)
+    parser.add_argument("--vllm-tensor-parallel-size", type=int, default=1)
+    parser.add_argument("--vllm-gpu-memory-utilization", type=float, default=0.9)
+    parser.add_argument("--vllm-max-model-len", type=int, default=None)
     parser.add_argument("--trust-remote-code", action="store_true")
     parser.add_argument("--no-chat-template", action="store_true")
     parser.add_argument("--extra-eos-token", action="append", default=[])
@@ -103,7 +108,7 @@ def run_math_dataset_eval(config: Dict[str, Any]):
     if not examples:
         raise ValueError("no eval examples were loaded")
 
-    generator = DryRunMathGenerator() if config.get("dry_run") else HFBatchedMathGenerator(config)
+    generator = make_math_generator(config)
     reward_config = MathRewardConfig(
         allow_symbolic_equivalence=bool(config.get("allow_symbolic_equivalence", False)),
         symbolic_equivalence_engine=str(config.get("symbolic_equivalence_engine") or "fraction"),
@@ -167,6 +172,19 @@ def run_math_dataset_eval(config: Dict[str, Any]):
     _write_jsonl(output_dir / "sample_generations.jsonl", select_review_samples(rows, config))
     _write_report(output_dir / "eval_report.md", summary, config)
     return summary
+
+
+def make_math_generator(config: Dict[str, Any]):
+    """Construct the requested generation backend without changing scoring."""
+
+    if config.get("dry_run"):
+        return DryRunMathGenerator()
+    backend = str(config.get("inference_backend") or "hf").lower()
+    if backend == "hf":
+        return HFBatchedMathGenerator(config)
+    if backend == "vllm":
+        return VLLMMathGenerator(config)
+    raise ValueError(f"unsupported inference backend: {backend}")
 
 
 def load_eval_examples(
@@ -461,6 +479,95 @@ class HFBatchedMathGenerator:
         return prompt
 
 
+class VLLMMathGenerator:
+    """Batched vLLM generator for high-throughput eval-only math runs."""
+
+    def __init__(self, config: Dict[str, Any]):
+        try:
+            from transformers import AutoTokenizer
+            from vllm import LLM, SamplingParams
+        except ImportError as exc:
+            raise RuntimeError("vllm and transformers are required for vLLM evals") from exc
+
+        self.config = config
+        self.SamplingParams = SamplingParams
+        self.max_new_tokens = int(config.get("max_new_tokens") or 2048)
+        self.apply_chat_template = not bool(config.get("no_chat_template", False))
+        thinking_value = config.get("enable_thinking", "false")
+        self.enable_thinking = None if thinking_value == "auto" else thinking_value == "true"
+        model_name = config["model_name"]
+        trust_remote_code = bool(config.get("trust_remote_code", False))
+
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=trust_remote_code)
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer.padding_side = "left"
+        self.eos_token_ids = self._resolve_eos_token_ids(config)
+
+        llm_kwargs: Dict[str, Any] = {
+            "model": model_name,
+            "trust_remote_code": trust_remote_code,
+            "tensor_parallel_size": int(config.get("vllm_tensor_parallel_size") or 1),
+            "gpu_memory_utilization": float(config.get("vllm_gpu_memory_utilization") or 0.9),
+        }
+        dtype = config.get("vllm_dtype") or config.get("torch_dtype") or "auto"
+        if dtype:
+            llm_kwargs["dtype"] = dtype
+        max_model_len = config.get("vllm_max_model_len")
+        if max_model_len:
+            llm_kwargs["max_model_len"] = int(max_model_len)
+        self.llm = LLM(**llm_kwargs)
+
+    def generate_batch(self, prompts: List[str]) -> List[str]:
+        rendered = [self._render_prompt(prompt) for prompt in prompts]
+        temperature = float(self.config.get("temperature") or 0.0)
+        sampling_params = self.SamplingParams(
+            n=1,
+            temperature=temperature,
+            top_p=float(self.config.get("top_p") or 1.0),
+            max_tokens=self.max_new_tokens,
+            stop_token_ids=self.eos_token_ids or None,
+        )
+        outputs = self.llm.generate(rendered, sampling_params=sampling_params)
+        completions = []
+        for output in outputs:
+            completions.append(output.outputs[0].text if output.outputs else "")
+        return completions
+
+    def count_completion_tokens(self, completion: str) -> int:
+        return len(self.tokenizer(completion, add_special_tokens=False)["input_ids"])
+
+    def _resolve_eos_token_ids(self, config: Dict[str, Any]) -> List[int]:
+        token_ids = []
+        if self.tokenizer.eos_token_id is not None:
+            token_ids.append(int(self.tokenizer.eos_token_id))
+        for token in config.get("extra_eos_token") or []:
+            token_id = self.tokenizer.convert_tokens_to_ids(token)
+            if token_id is None:
+                raise ValueError(f"could not resolve extra eos token: {token}")
+            if token_id == self.tokenizer.unk_token_id and token != self.tokenizer.unk_token:
+                raise ValueError(f"unknown extra eos token: {token}")
+            token_ids.append(int(token_id))
+        return list(dict.fromkeys(token_ids))
+
+    def _render_prompt(self, prompt: str) -> str:
+        if self.apply_chat_template:
+            messages = [{"role": "user", "content": prompt}]
+            kwargs = {}
+            if self.enable_thinking is not None:
+                kwargs["enable_thinking"] = self.enable_thinking
+            try:
+                return self.tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                    **kwargs,
+                )
+            except (TypeError, ValueError):
+                pass
+        return prompt
+
+
 def summarize_eval_rows(rows: Iterable[Dict[str, Any]], config: Optional[Dict[str, Any]] = None):
     rows = list(rows)
     total = len(rows)
@@ -497,6 +604,7 @@ def summarize_eval_rows(rows: Iterable[Dict[str, Any]], config: Optional[Dict[st
         "dataset_config": config.get("dataset_config") if config else None,
         "split": config.get("split") if config else None,
         "model_name": config.get("model_name") if config else None,
+        "inference_backend": config.get("inference_backend") if config else None,
         "prompt_template": config.get("prompt_template") if config else None,
         "sample_size": total,
         "num_examples": example_count,
@@ -724,6 +832,7 @@ def _write_report(path: Path, summary: Dict[str, Any], config: Dict[str, Any]):
         f"- dataset_config: `{summary['dataset_config']}`",
         f"- split: `{summary['split']}`",
         f"- model: `{summary['model_name']}`",
+        f"- inference_backend: `{summary.get('inference_backend')}`",
         f"- prompt_template: `{summary.get('prompt_template')}`",
         f"- sample_size: `{summary['sample_size']}`",
         f"- seed: `{summary['seed']}`",

@@ -179,6 +179,33 @@ def test_parse_args_accepts_num_samples_per_example():
     assert args.num_samples_per_example == 16
 
 
+def test_parse_args_accepts_vllm_backend_options():
+    args = parse_args(
+        [
+            "--model-name",
+            "dummy-model",
+            "--output-dir",
+            "runs/eval/dummy",
+            "--inference-backend",
+            "vllm",
+            "--vllm-tensor-parallel-size",
+            "2",
+            "--vllm-gpu-memory-utilization",
+            "0.75",
+            "--vllm-max-model-len",
+            "4096",
+            "--vllm-dtype",
+            "bfloat16",
+        ]
+    )
+
+    assert args.inference_backend == "vllm"
+    assert args.vllm_tensor_parallel_size == 2
+    assert args.vllm_gpu_memory_utilization == 0.75
+    assert args.vllm_max_model_len == 4096
+    assert args.vllm_dtype == "bfloat16"
+
+
 def test_load_local_jsonl_eval_examples(tmp_path):
     data_path = tmp_path / "eval.jsonl"
     data_path.write_text(
