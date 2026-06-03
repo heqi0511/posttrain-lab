@@ -93,6 +93,31 @@ def test_verl_reward_wrapper_loads_from_file_path_without_sys_modules_registrati
     assert result["reason"] == "exact_match"
 
 
+def test_verl_reward_wrapper_sanitizes_none_metadata_for_validation_metrics():
+    wrapper_path = Path(__file__).parents[1] / "src" / "posttrain_lab" / "rewards" / "verl_math_reward.py"
+    spec = importlib.util.spec_from_file_location("verl_external_reward", wrapper_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+
+    spec.loader.exec_module(module)
+
+    result = module.compute_score(
+        data_source=None,
+        solution_str="No final answer.",
+        ground_truth="4",
+        extra_info={},
+    )
+
+    assert result["score"] == 0.0
+    assert result["reason"] == "no_boxed_answer"
+    assert result["extracted_answer"] == ""
+    assert result["normalized_prediction"] == ""
+    assert result["normalized_answer"] == ""
+    assert result["data_source"] == ""
+    assert result["ground_truth_index"] == 0
+
+
 def test_sympy_engine_uses_latex2sympy2_extended_fallback(monkeypatch):
     monkeypatch.setitem(sys.modules, "latex2sympy2", None)
 
