@@ -1,4 +1,5 @@
 import json
+import importlib.util
 import sys
 import types
 from pathlib import Path
@@ -71,6 +72,25 @@ def test_verl_compute_score_rejects_multiple_boxed_answers():
 
     assert result["score"] == 0.0
     assert result["reason"] == "multiple_boxed_answers"
+
+
+def test_verl_reward_wrapper_loads_from_file_path_without_sys_modules_registration():
+    wrapper_path = Path(__file__).parents[1] / "src" / "posttrain_lab" / "rewards" / "verl_math_reward.py"
+    spec = importlib.util.spec_from_file_location("verl_external_reward", wrapper_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+
+    spec.loader.exec_module(module)
+
+    result = module.compute_score(
+        data_source="verl-smoke",
+        solution_str=r"Final answer: \boxed{4}",
+        ground_truth="4",
+        extra_info={},
+    )
+    assert result["score"] == 1.0
+    assert result["reason"] == "exact_match"
 
 
 def test_sympy_engine_uses_latex2sympy2_extended_fallback(monkeypatch):
