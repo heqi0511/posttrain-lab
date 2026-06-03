@@ -159,7 +159,7 @@ def convert_dapo_to_verl_parquet(
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Convert DAPO-Math train data into RLVR JSONL and verl parquet.")
-    parser.add_argument("--output", required=True)
+    parser.add_argument("--output", default=None)
     parser.add_argument("--summary", default=None)
     parser.add_argument("--verl-parquet-output", default=None)
     parser.add_argument("--verl-parquet-summary", default=None)
@@ -169,14 +169,19 @@ def main(argv=None):
     parser.add_argument("--max-examples", type=int, default=None)
     args = parser.parse_args(argv)
 
-    summary = convert_dapo_to_rlvr(
-        args.output,
-        input_path=args.input_path,
-        dataset_name=args.dataset_name,
-        split=args.split,
-        max_examples=args.max_examples,
-        summary_path=args.summary,
-    )
+    if not args.output and not args.verl_parquet_output:
+        parser.error("at least one of --output or --verl-parquet-output is required")
+
+    summary = {}
+    if args.output:
+        summary = convert_dapo_to_rlvr(
+            args.output,
+            input_path=args.input_path,
+            dataset_name=args.dataset_name,
+            split=args.split,
+            max_examples=args.max_examples,
+            summary_path=args.summary,
+        )
     if args.verl_parquet_output:
         summary["verl_parquet"] = convert_dapo_to_verl_parquet(
             args.verl_parquet_output,

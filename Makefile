@@ -82,7 +82,7 @@ dapo-rlvr-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.dapo_math --input-path $(DAPO_INPUT_PATH) --output $(DAPO_RLVR_DIR)/train.jsonl --summary $(DAPO_RLVR_DIR)/summary.json
 
 dapo-verl-parquet-data:
-	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.dapo_math --input-path $(DAPO_INPUT_PATH) --output $(DAPO_RLVR_DIR)/train.jsonl --summary $(DAPO_RLVR_DIR)/summary.json --verl-parquet-output $(DAPO_VERL_PARQUET_DIR)/train.parquet --verl-parquet-summary $(DAPO_VERL_PARQUET_DIR)/summary.json
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.dapo_math --input-path $(DAPO_INPUT_PATH) --verl-parquet-output $(DAPO_VERL_PARQUET_DIR)/train.parquet --verl-parquet-summary $(DAPO_VERL_PARQUET_DIR)/summary.json
 
 check-leakage:
 	@echo "check-leakage placeholder: no leakage checker configured yet"
