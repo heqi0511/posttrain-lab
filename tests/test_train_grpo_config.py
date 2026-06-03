@@ -3,7 +3,12 @@ from pathlib import Path
 
 from posttrain_lab.train.train_grpo import (
     _build_grpo_config_kwargs,
+    _distributed_rank,
+    _distributed_world_size,
+    _is_main_process,
+    _local_cuda_device_index,
     _math_reward_config,
+    _run_rollout_format_gate,
     _rollout_format_gate_passed,
     _resolve_config,
     _summarize_samples,
@@ -172,6 +177,34 @@ def test_qwen25_dapo_one_epoch_8gpu_config_records_small_batch_plan():
     assert resolved["rollout"]["epsilon"] == 0.22
     assert resolved["rollout"]["loss_type"] == "dapo"
     assert resolved["peft"]["method"] == "none"
+
+
+def test_distributed_helpers_read_rank_environment(monkeypatch):
+    monkeypatch.setenv("RANK", "3")
+    monkeypatch.setenv("WORLD_SIZE", "8")
+    monkeypatch.setenv("LOCAL_RANK", "3")
+
+    assert _distributed_rank() == 3
+    assert _distributed_world_size() == 8
+    assert not _is_main_process()
+    assert _local_cuda_device_index(8) == 3
+
+
+def test_non_main_rank_waits_for_rollout_gate_metrics(tmp_path, monkeypatch):
+    monkeypatch.setenv("RANK", "1")
+    monkeypatch.setenv("WORLD_SIZE", "2")
+    metrics = {
+        "reward_mean": 0.25,
+        "reward_std": 0.4,
+        "parse_failure_rate": 0.0,
+        "perfect_reward_rate": 0.25,
+    }
+    (tmp_path / "rollout_format_gate.json").write_text(json.dumps(metrics), encoding="utf-8")
+
+    config = _resolve_config(load_config("configs/rlvr/qwen25_math_1_5b_dapo_grpo_one_epoch_8gpu.yaml"))
+    config["dry_run"] = False
+
+    assert _run_rollout_format_gate(config, tmp_path, examples=[]) == metrics
 
 
 def test_build_grpo_config_kwargs_passes_optional_trl_fields(tmp_path):

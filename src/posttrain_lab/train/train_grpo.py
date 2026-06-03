@@ -6,7 +6,9 @@ import argparse
 import copy
 import inspect
 import json
+import os
 import statistics
+import time
 from pathlib import Path
 
 from posttrain_lab.data.validate import validate_jsonl
@@ -118,6 +120,7 @@ def run_grpo(config, config_path):
     """Run a dry-run or real TRL GRPO smoke experiment."""
 
     resolved = _resolve_config(config)
+    _set_local_cuda_device()
     output_dir = Path(resolved["output_dir"])
     data_path = Path(resolved["data_path"])
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -138,26 +141,28 @@ def run_grpo(config, config_path):
     config_hash = _sha256_file(config_path)
     git_commit = _git_commit()
 
-    _write_text(output_dir / "resolved_config.yaml", _dump_yaml(resolved))
+    if _is_main_process():
+        _write_text(output_dir / "resolved_config.yaml", _dump_yaml(resolved))
 
     gate_metrics = _run_rollout_format_gate(resolved, output_dir, examples)
     if gate_metrics and not _rollout_format_gate_passed(resolved, gate_metrics):
         failure_reason = _rollout_format_gate_failure_reason(resolved, gate_metrics)
-        _write_jsonl(
-            output_dir / "metrics.jsonl",
-            [
-                {
-                    "step": 0,
-                    "final_loss": None,
-                    "reward_version": resolved["reward_version"],
-                    "dry_run": resolved["dry_run"],
-                    "smoke_run": resolved["smoke_run"],
-                    "blocked_by_rollout_format_gate": True,
-                    "rollout_format_gate_failure_reason": failure_reason,
-                    **_prefixed_metrics("rollout_format_gate", gate_metrics),
-                }
-            ],
-        )
+        if _is_main_process():
+            _write_jsonl(
+                output_dir / "metrics.jsonl",
+                [
+                    {
+                        "step": 0,
+                        "final_loss": None,
+                        "reward_version": resolved["reward_version"],
+                        "dry_run": resolved["dry_run"],
+                        "smoke_run": resolved["smoke_run"],
+                        "blocked_by_rollout_format_gate": True,
+                        "rollout_format_gate_failure_reason": failure_reason,
+                        **_prefixed_metrics("rollout_format_gate", gate_metrics),
+                    }
+                ],
+            )
         raise RuntimeError(f"rollout-format gate failed: {failure_reason}")
 
     if resolved["dry_run"]:
@@ -172,6 +177,13 @@ def run_grpo(config, config_path):
         final_loss = 0.0
     else:
         final_loss, trainer_log, model, tokenizer = _run_trl_grpo(resolved, examples, output_dir)
+        if not _is_main_process():
+            return {
+                "output_dir": str(output_dir),
+                "rank": _distributed_rank(),
+                "world_size": _distributed_world_size(),
+                "git_commit": git_commit,
+            }
         _write_jsonl(output_dir / "trainer_log.jsonl", trainer_log)
         sample_rows = _write_sample_rollouts(
             output_dir / "sample_rollouts.jsonl",
@@ -530,14 +542,19 @@ def _move_model_to_accelerator(model):
         import torch
     except ImportError:
         return model
-    if torch.cuda.is_available():
-        return model.to("cuda")
+    device = _local_torch_device(torch)
+    if device is not None:
+        return model.to(device)
     return model
 
 
 def _run_rollout_format_gate(config, output_dir, examples):
     if not config["rollout_format_gate"]["enabled"]:
         return None
+
+    metrics_path = output_dir / "rollout_format_gate.json"
+    if not _is_main_process():
+        return _wait_for_json(metrics_path, timeout_seconds=3600)
 
     gate_config = copy.deepcopy(config)
     gate_config["rollout"]["sample_count"] = int(config["rollout_format_gate"]["sample_count"])
@@ -562,7 +579,7 @@ def _run_rollout_format_gate(config, output_dir, examples):
         del tokenizer
         _empty_cuda_cache()
     metrics = _summarize_samples(rows)
-    _write_text(output_dir / "rollout_format_gate.json", json.dumps(metrics, indent=2, sort_keys=True) + "\n")
+    _write_text(metrics_path, json.dumps(metrics, indent=2, sort_keys=True) + "\n")
     return metrics
 
 
@@ -594,6 +611,77 @@ def _rollout_format_gate_failure_reason(config, metrics):
 
 def _prefixed_metrics(prefix, metrics):
     return {f"{prefix}_{key}": value for key, value in metrics.items()}
+
+
+def _distributed_rank():
+    try:
+        return int(os.environ.get("RANK", "0"))
+    except ValueError:
+        return 0
+
+
+def _distributed_world_size():
+    try:
+        return int(os.environ.get("WORLD_SIZE", "1"))
+    except ValueError:
+        return 1
+
+
+def _is_main_process():
+    return _distributed_rank() == 0
+
+
+def _local_cuda_device_index(device_count):
+    if device_count <= 0:
+        return None
+    raw_rank = os.environ.get("LOCAL_RANK")
+    if raw_rank is None:
+        return None
+    try:
+        local_rank = int(raw_rank)
+    except ValueError:
+        return None
+    if 0 <= local_rank < device_count:
+        return local_rank
+    return None
+
+
+def _set_local_cuda_device():
+    try:
+        import torch
+    except ImportError:
+        return None
+    if not torch.cuda.is_available():
+        return None
+    index = _local_cuda_device_index(torch.cuda.device_count())
+    if index is None:
+        return None
+    torch.cuda.set_device(index)
+    return index
+
+
+def _local_torch_device(torch_module):
+    if not torch_module.cuda.is_available():
+        return None
+    index = _local_cuda_device_index(torch_module.cuda.device_count())
+    if index is None:
+        return torch_module.device("cuda")
+    return torch_module.device("cuda", index)
+
+
+def _wait_for_json(path, timeout_seconds):
+    deadline = time.monotonic() + timeout_seconds
+    last_error = None
+    while time.monotonic() < deadline:
+        try:
+            with Path(path).open("r", encoding="utf-8") as handle:
+                return json.load(handle)
+        except FileNotFoundError as exc:
+            last_error = exc
+        except json.JSONDecodeError as exc:
+            last_error = exc
+        time.sleep(1)
+    raise TimeoutError(f"timed out waiting for {path}: {last_error}")
 
 
 def _empty_cuda_cache():
