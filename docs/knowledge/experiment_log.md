@@ -660,3 +660,17 @@ Record training and eval runs here with links to run directories, run cards, res
 - Fix before relaunch: keep the lightweight gate, but treat it as a safety gate rather than a quality gate by setting `max_parse_failure_rate=0.9`. It now blocks only nearly completely unparseable behavior before this requested one-epoch run; quality still must be judged by post-training heldout accuracy and reward metrics.
 - Fourth 8-GPU launch attempt: Slurm job `6959220` passed the relaxed gate and failed before trainer steps during TRL config initialization. TRL 1.5.1 raised `ValueError: 'generation_batch_size' and 'steps_per_generation' can not be both configured at the same time`.
 - Fix before relaunch: keep `generation_batch_size=32` for the one-epoch prompt-batch estimate and set `steps_per_generation=null`. The GRPO config builder also drops `steps_per_generation` whenever `generation_batch_size` is present, preventing this TRL 1.5.1 conflict from recurring.
+
+### 2026-06-03 Qwen2.5-Math-1.5B MATH500 Paper-Like Baseline Eval
+
+- Goal: re-evaluate `/fs/nexus-scratch/qhe123/models/Qwen2.5-Math-1.5B` on MATH500 with the paper-aligned response length and a verl-style boxed parser.
+- Code commits: `9c7dca3` added explicit symbolic-equivalence engine selection; `95fc2dd` added optional extra EOS tokens for chat-style math eval.
+- Dataset: `/fs/nexus-scratch/qhe123/datasets/verl_parquet/math500/test.parquet`, `500` test rows, read-only.
+- Eval settings: `prompt_template=paper_math`, chat template enabled, `max_new_tokens=2048`, `temperature=0.8`, `top_p=1.0`, `reward_version=math_boxed_verl_v001`, `allow_symbolic_equivalence=true`, `symbolic_equivalence_engine=sympy`, `sample_size=500`.
+- Diagnostic run without Qwen chat stop token: Slurm job `6959747`, output `runs/eval/qwen25_math_1_5b_math500_paper2048_verlparser_full/`, completed in `00:33:59`. Accuracy `0.270`, format success `0.772`, parse failure `0.228`, truncation `0.232`, average completion length `1006.86` tokens.
+- Final paper-like run with `--extra-eos-token "<|im_end|>"`: Slurm job `6959864`, output `runs/eval/qwen25_math_1_5b_math500_paper2048_verlparser_imend_full/`, completed in `00:17:40` on one RTX 6000 Ada with `batch_size=32`.
+- Final metrics: accuracy `0.290` (`145/500` full-credit correct), reward mean `0.3408`, format success `0.798`, parse failure `0.202`, correctness given parse `0.3634`, truncation `0.222`, average completion length `966.39` tokens.
+- Reason counts: exact match `143`, sympy equivalence `2`, format-correct wrong answer `254`, empty boxed answer `62`, no boxed answer `33`, malformed boxed answer `6`.
+- Interpretation: adding `<|im_end|>` improved smoke behavior and cut full-eval walltime roughly in half, but full MATH500 accuracy only moved from `27.0%` to `29.0%`. The remaining gap is mostly model behavior: long wrong completions, prompt/task drift, missing final boxed answers, and truncation, not just parser equivalence.
+- Comparability caveat: the paper reports Qwen2.5-Math results as average Pass@1 over `16` validation samples. This run is a single-sample evaluation, so it is useful as a local baseline but is not a full replication of the paper's reported protocol.
+- Safety: no `data/raw` files, MATH500 prompts/answers, reward semantics, or train/validation/test splits were modified.
