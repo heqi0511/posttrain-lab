@@ -8,7 +8,7 @@ cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 
 export HF_HOME="${HF_HOME:-/fs/nexus-scratch/qhe123/.cache/huggingface}"
 export PIP_CACHE_DIR="${PIP_CACHE_DIR:-/fs/nexus-scratch/qhe123/pip-cache}"
-export PYTHONPATH="${PYTHONPATH:-src}"
+export PYTHONPATH="$(pwd)/src${PYTHONPATH:+:${PYTHONPATH}}"
 export PYTHONDONTWRITEBYTECODE=1
 export TOKENIZERS_PARALLELISM=false
 export NCCL_ASYNC_ERROR_HANDLING="${NCCL_ASYNC_ERROR_HANDLING:-1}"

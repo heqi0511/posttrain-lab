@@ -66,6 +66,7 @@ def parse_args(argv=None):
     parser.add_argument("--no-chat-template", action="store_true")
     parser.add_argument("--enable-thinking", choices=["true", "false", "auto"], default="false")
     parser.add_argument("--prompt-template", choices=["boxed", "paper_math"], default="boxed")
+    parser.add_argument("--reward-version", default="math_boxed_v001")
     parser.add_argument("--allow-symbolic-equivalence", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--save-sample-count", type=int, default=20)
@@ -420,6 +421,7 @@ def summarize_eval_rows(rows: Iterable[Dict[str, Any]], config: Optional[Dict[st
     rows = list(rows)
     total = len(rows)
     reward_values = [float(row["reward"]) for row in rows]
+    full_credit_values = [float(row["reward"] == 1.0) for row in rows]
     parse_failures = [bool(row["parse_failed"]) for row in rows]
     parseable = [row for row in rows if not row["parse_failed"]]
     truncated = [row.get("truncated") for row in rows if row.get("truncated") is not None]
@@ -438,10 +440,12 @@ def summarize_eval_rows(rows: Iterable[Dict[str, Any]], config: Optional[Dict[st
         "prompt_template": config.get("prompt_template") if config else None,
         "sample_size": total,
         "seed": config.get("seed") if config else None,
-        "accuracy": _mean(reward_values),
+        "accuracy": _mean(full_credit_values),
+        "full_credit_accuracy": _mean(full_credit_values),
+        "reward_mean": _mean(reward_values),
         "format_success_rate": 1.0 - _mean(parse_failures) if total else None,
         "parse_failure_rate": _mean(parse_failures),
-        "correctness_given_parse": _mean(float(row["reward"]) for row in parseable),
+        "correctness_given_parse": _mean(float(row["reward"] == 1.0) for row in parseable),
         "avg_completion_chars": _mean(row["completion_chars"] for row in rows),
         "avg_completion_tokens": _mean(
             row["completion_tokens"] for row in rows if row.get("completion_tokens") is not None

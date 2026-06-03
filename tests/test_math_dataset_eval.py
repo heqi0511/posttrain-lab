@@ -194,11 +194,42 @@ def test_summarize_eval_rows_reports_accuracy_parse_and_truncation():
     summary = summarize_eval_rows(rows, {"dataset_id": "d", "model_name": "m", "sample_size": 3})
 
     assert summary["accuracy"] == pytest.approx(1 / 3)
+    assert summary["full_credit_accuracy"] == pytest.approx(1 / 3)
+    assert summary["reward_mean"] == pytest.approx(1 / 3)
     assert summary["parse_failure_rate"] == pytest.approx(1 / 3)
     assert summary["format_success_rate"] == pytest.approx(2 / 3)
     assert summary["correctness_given_parse"] == 0.5
     assert summary["truncation_rate"] == 1 / 3
     assert summary["reason_counts"] == {"answer_mismatch": 1, "exact_match": 1, "no_boxed_answer": 1}
+
+
+def test_summarize_eval_rows_keeps_partial_reward_out_of_accuracy():
+    rows = [
+        {
+            "reward": 1.0,
+            "reason": "exact_match",
+            "parse_failed": False,
+            "completion_chars": 10,
+            "completion_tokens": 2,
+            "truncated": False,
+            "metadata": {},
+        },
+        {
+            "reward": 0.1,
+            "reason": "format_correct_answer_mismatch",
+            "parse_failed": False,
+            "completion_chars": 10,
+            "completion_tokens": 2,
+            "truncated": False,
+            "metadata": {},
+        },
+    ]
+
+    summary = summarize_eval_rows(rows, {})
+
+    assert summary["accuracy"] == 0.5
+    assert summary["full_credit_accuracy"] == 0.5
+    assert summary["reward_mean"] == pytest.approx(0.55)
 
 
 def test_dry_run_math_dataset_eval_writes_artifacts(monkeypatch, tmp_path):

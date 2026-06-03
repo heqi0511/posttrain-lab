@@ -156,6 +156,24 @@ def test_qwen25_dapo_grpo_config_matches_paperish_hyperparams():
     assert resolved["reward"]["allow_symbolic_equivalence"] is True
 
 
+def test_qwen25_dapo_one_epoch_8gpu_config_records_small_batch_plan():
+    config = load_config("configs/rlvr/qwen25_math_1_5b_dapo_grpo_one_epoch_8gpu.yaml")
+    resolved = _resolve_config(config)
+
+    assert resolved["model_name_or_path"].endswith("Qwen2.5-Math-1.5B")
+    assert resolved["reward_version"] == "math_boxed_verl_v001"
+    assert resolved["selection"]["max_train_examples"] == 17917
+    assert resolved["training"]["max_steps"] == 2240
+    assert resolved["training"]["per_device_train_batch_size"] == 4
+    assert resolved["rollout"]["generation_batch_size"] == 32
+    assert resolved["rollout"]["num_generations"] == 4
+    assert resolved["rollout"]["max_completion_length"] == 2048
+    assert resolved["rollout"]["temperature"] == 0.8
+    assert resolved["rollout"]["epsilon"] == 0.22
+    assert resolved["rollout"]["loss_type"] == "dapo"
+    assert resolved["peft"]["method"] == "none"
+
+
 def test_build_grpo_config_kwargs_passes_optional_trl_fields(tmp_path):
     config = _resolve_config(load_config("configs/rlvr/qwen25_math_1_5b_dapo_grpo_paperish.yaml"))
     supported = {

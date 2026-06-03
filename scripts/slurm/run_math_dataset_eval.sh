@@ -17,12 +17,13 @@ TOP_P="${TOP_P:-1.0}"
 BATCH_SIZE="${BATCH_SIZE:-1}"
 TORCH_DTYPE="${TORCH_DTYPE:-auto}"
 ENABLE_THINKING="${ENABLE_THINKING:-false}"
+REWARD_VERSION="${REWARD_VERSION:-math_boxed_v001}"
 
 cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
 
 export HF_HOME="${HF_HOME:-/fs/nexus-scratch/qhe123/.cache/huggingface}"
 export PIP_CACHE_DIR="${PIP_CACHE_DIR:-/fs/nexus-scratch/qhe123/pip-cache}"
-export PYTHONPATH="${PYTHONPATH:-src}"
+export PYTHONPATH="$(pwd)/src${PYTHONPATH:+:${PYTHONPATH}}"
 export PYTHONDONTWRITEBYTECODE=1
 export TOKENIZERS_PARALLELISM=false
 
@@ -41,6 +42,7 @@ echo "top_p=${TOP_P}"
 echo "batch_size=${BATCH_SIZE}"
 echo "torch_dtype=${TORCH_DTYPE}"
 echo "enable_thinking=${ENABLE_THINKING}"
+echo "reward_version=${REWARD_VERSION}"
 echo "env=${ENV_PATH}"
 echo "job_id=${SLURM_JOB_ID:-none}"
 echo "cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-unset}"
@@ -72,4 +74,5 @@ PY
   --batch-size "${BATCH_SIZE}" \
   --torch-dtype "${TORCH_DTYPE}" \
   --enable-thinking "${ENABLE_THINKING}" \
+  --reward-version "${REWARD_VERSION}" \
   --trust-remote-code

@@ -639,3 +639,16 @@ Record training and eval runs here with links to run directories, run cards, res
 - Added submit target: `make submit-qwen25-dapo-grpo`, defaulting to `cbcb-heng`, `gpu:rtx6000ada:4`, `16` CPU, `192G` memory, and `12:00:00` walltime.
 - Server staging check at commit `cedb421`: `make dapo-rlvr-data` produced `17,917` RLVR train rows, schema validation passed, and `make rlvr-qwen25-dapo-dry` confirmed no model loading or training in dry-run mode.
 - Safety: no training was started; no `data/raw`, eval prompts, reward semantics, or existing train/validation/test splits were modified.
+
+### 2026-06-03 Qwen2.5-Math-1.5B DAPO One-Epoch GRPO Plan
+
+- Goal: start the first full DAPO17k GRPO pass for Qwen2.5-Math-1.5B, using paper-aligned hyperparameters where possible and adapting batch size to Nexus GPU memory.
+- Config prepared: `configs/rlvr/qwen25_math_1_5b_dapo_grpo_one_epoch_8gpu.yaml`.
+- Planned model: `/fs/nexus-scratch/qhe123/models/Qwen2.5-Math-1.5B`.
+- Planned data: `data/rlvr_prompts/dapo_math_raw_17k/train.jsonl`, `17,917` staged RLVR train rows.
+- Reward: `math_boxed_verl_v001`, the common-verl-style boxed reward with full credit `1.0`, format-only wrong-answer credit `0.1`, and parse/format failure `0.0`.
+- Paper-aligned settings retained: `num_generations=4`, `max_prompt_length=1024`, `max_completion_length=2048`, `temperature=0.8`, `top_p=1.0`, `learning_rate=2e-6`, `epsilon=0.22`, `beta=0.0`, `num_iterations=2`, `loss_type=dapo`, `mask_truncated_completions=true`, full finetuning via `peft.method: none`.
+- Nexus adaptation: target `8` GPUs, `per_device_train_batch_size=4`, explicit `generation_batch_size=32`, and `max_steps=2240`. This is a conservative one-epoch estimate because `generation_batch_size / num_generations = 8` prompt groups per generation batch, and `17,917 / 8 ≈ 2240`.
+- Slurm preference: use `cbcb` / `huge-long` with `gpu:rtx6000ada:8` if immediately available; use `posttrain-lab-verl` env for TRL 1.5.1 and flash-attn support where compatible.
+- Planned outputs: checkpoints every `280` steps, `trainer_log.jsonl`, `metrics.jsonl`, `run_card.md`, `sample_rollouts.jsonl`, plus post-training evals on fixed math eval sets before deciding whether to continue.
+- Safety: no `data/raw`, eval prompts, or train/val/test splits are changed by this plan.
