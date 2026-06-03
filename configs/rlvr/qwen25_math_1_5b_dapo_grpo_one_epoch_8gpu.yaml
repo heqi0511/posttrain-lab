@@ -63,7 +63,10 @@ rollout:
   sample_rollout_generations: 4
 rollout_format_gate:
   enabled: true
-  sample_count: 16
+  # Keep this preflight cheap; the trainer rollout settings above remain paper-aligned.
+  sample_count: 4
+  sample_rollout_generations: 1
+  max_completion_length: 512
   max_parse_failure_rate: 0.5
   max_reward_mean: 0.95
   max_perfect_reward_rate: 0.95

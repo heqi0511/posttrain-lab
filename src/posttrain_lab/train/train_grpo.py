@@ -312,6 +312,8 @@ def _resolve_config(config):
     resolved.setdefault("rollout_format_gate", {})
     resolved["rollout_format_gate"].setdefault("enabled", False)
     resolved["rollout_format_gate"].setdefault("sample_count", resolved["rollout"]["sample_count"])
+    resolved["rollout_format_gate"].setdefault("sample_rollout_generations", None)
+    resolved["rollout_format_gate"].setdefault("max_completion_length", None)
     resolved["rollout_format_gate"].setdefault("max_parse_failure_rate", 0.0)
     resolved["rollout_format_gate"].setdefault("max_reward_mean", None)
     resolved["rollout_format_gate"].setdefault("max_perfect_reward_rate", None)
@@ -558,6 +560,12 @@ def _run_rollout_format_gate(config, output_dir, examples):
 
     gate_config = copy.deepcopy(config)
     gate_config["rollout"]["sample_count"] = int(config["rollout_format_gate"]["sample_count"])
+    if config["rollout_format_gate"]["sample_rollout_generations"] is not None:
+        gate_config["rollout"]["sample_rollout_generations"] = int(
+            config["rollout_format_gate"]["sample_rollout_generations"]
+        )
+    if config["rollout_format_gate"]["max_completion_length"] is not None:
+        gate_config["rollout"]["max_completion_length"] = int(config["rollout_format_gate"]["max_completion_length"])
     if config["dry_run"]:
         rows = _write_sample_rollouts(
             output_dir / "rollout_format_gate.jsonl",
