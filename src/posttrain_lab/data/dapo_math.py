@@ -1,4 +1,4 @@
-"""Convert DAPO-Math raw data into strict RLVR JSONL."""
+"""Convert DAPO-Math raw data into strict RLVR and verl parquet data."""
 
 from __future__ import annotations
 
@@ -87,10 +87,82 @@ def convert_dapo_to_rlvr(
     return summary
 
 
+def build_dapo_verl_rows(
+    *,
+    input_path=None,
+    dataset_name="BytedTsinghua-SIA/DAPO-Math-17k",
+    split="train",
+    max_examples: Optional[int] = None,
+    prompt_template=DEFAULT_PROMPT_TEMPLATE,
+):
+    """Return DAPO rows in the common verl parquet schema."""
+
+    if split != "train":
+        raise ValueError("only the DAPO train split may be converted for RLVR training")
+
+    rows = []
+    skipped = []
+    for index, row in enumerate(_load_rows(input_path=input_path, dataset_name=dataset_name, split=split)):
+        if max_examples is not None and len(rows) >= int(max_examples):
+            break
+        problem = _extract_problem(row)
+        answer = _extract_answer(row)
+        if not problem or not answer:
+            skipped.append({"index": index, "reason": "missing_problem_or_answer"})
+            continue
+        rows.append(_to_verl_record(row, problem, answer, dataset_name, split, len(rows), prompt_template))
+    return rows, skipped
+
+
+def convert_dapo_to_verl_parquet(
+    output_path,
+    *,
+    input_path=None,
+    dataset_name="BytedTsinghua-SIA/DAPO-Math-17k",
+    split="train",
+    max_examples: Optional[int] = None,
+    prompt_template=DEFAULT_PROMPT_TEMPLATE,
+    summary_path=None,
+):
+    """Write DAPO rows as boxed-prompt verl parquet and return a summary."""
+
+    rows, skipped = build_dapo_verl_rows(
+        input_path=input_path,
+        dataset_name=dataset_name,
+        split=split,
+        max_examples=max_examples,
+        prompt_template=prompt_template,
+    )
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        from datasets import Dataset
+    except ImportError as exc:
+        raise RuntimeError("install the optional 'datasets' package to write verl parquet data") from exc
+    Dataset.from_list(rows).to_parquet(str(output_path))
+
+    summary = {
+        "dataset_name": dataset_name,
+        "source_split": split,
+        "input_path": str(input_path) if input_path else None,
+        "output_path": str(output_path),
+        "num_rows": len(rows),
+        "skipped_count": len(skipped),
+        "skipped_examples": skipped[:20],
+        "schema": "verl_math_parquet",
+        "prompt_template": "boxed_final_answer",
+    }
+    if summary_path is not None:
+        _write_text(Path(summary_path), json.dumps(summary, indent=2, sort_keys=True) + "\n")
+    return summary
+
+
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Convert DAPO-Math train data into RLVR JSONL.")
+    parser = argparse.ArgumentParser(description="Convert DAPO-Math train data into RLVR JSONL and verl parquet.")
     parser.add_argument("--output", required=True)
     parser.add_argument("--summary", default=None)
+    parser.add_argument("--verl-parquet-output", default=None)
+    parser.add_argument("--verl-parquet-summary", default=None)
     parser.add_argument("--input-path", default=None, help="Local JSONL/JSON/Parquet path, if already downloaded.")
     parser.add_argument("--dataset-name", default="BytedTsinghua-SIA/DAPO-Math-17k")
     parser.add_argument("--split", default="train", choices=["train"])
@@ -105,6 +177,15 @@ def main(argv=None):
         max_examples=args.max_examples,
         summary_path=args.summary,
     )
+    if args.verl_parquet_output:
+        summary["verl_parquet"] = convert_dapo_to_verl_parquet(
+            args.verl_parquet_output,
+            input_path=args.input_path,
+            dataset_name=args.dataset_name,
+            split=args.split,
+            max_examples=args.max_examples,
+            summary_path=args.verl_parquet_summary,
+        )
     print(json.dumps(summary, sort_keys=True))
     return 0
 
@@ -212,6 +293,36 @@ def _stable_id(row, index):
         return f"dapo-math-train-{index:06d}"
     safe_source_id = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in source_id)
     return f"dapo-math-train-{index:06d}-{safe_source_id}"
+
+
+def _to_verl_record(row, problem, answer, dataset_name, split, index, prompt_template):
+    extra_info = row.get("extra_info")
+    if not isinstance(extra_info, dict):
+        extra_info = {}
+    raw_problem_id = row.get("raw_problem_id") or extra_info.get("index") or _stable_id(row, index)
+    return {
+        "data_source": _source(row, dataset_name),
+        "ability": str(row.get("ability") or "MATH"),
+        "reward_model": {
+            "ground_truth": answer,
+            "style": "rule",
+        },
+        "prompt": [
+            {
+                "role": "user",
+                "content": prompt_template.format(question=problem),
+            }
+        ],
+        "split": split,
+        "extra_info": {
+            **extra_info,
+            "index": str(extra_info.get("index") or raw_problem_id),
+            "raw_problem_id": str(raw_problem_id),
+            "raw_problem": problem,
+        },
+        "raw_problem": problem,
+        "raw_problem_id": str(raw_problem_id),
+    }
 
 
 def _source(row, dataset_name):

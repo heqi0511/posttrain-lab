@@ -170,6 +170,42 @@ def test_verl_reward_wrapper_exposes_common_verl_style_reward():
     assert result["reward_version"] == "math_boxed_verl_v001"
 
 
+def test_verl_reward_wrapper_accepts_reward_kwargs_for_sympy(monkeypatch):
+    monkeypatch.setitem(sys.modules, "latex2sympy2", None)
+
+    fake_extended = types.ModuleType("latex2sympy2_extended")
+
+    def fake_latex2sympy(expression):
+        import sympy
+
+        return sympy.sympify(expression.replace("^", "**"))
+
+    fake_extended.latex2sympy = fake_latex2sympy
+    monkeypatch.setitem(sys.modules, "latex2sympy2_extended", fake_extended)
+
+    wrapper_path = Path(__file__).parents[1] / "src" / "posttrain_lab" / "rewards" / "verl_math_reward.py"
+    spec = importlib.util.spec_from_file_location("verl_external_reward", wrapper_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+
+    spec.loader.exec_module(module)
+
+    result = module.compute_score_verl_style(
+        data_source="verl-smoke",
+        solution_str=r"The final answer is \boxed{2*x+2}.",
+        ground_truth="2*(x+1)",
+        extra_info={},
+        allow_symbolic_equivalence=True,
+        symbolic_equivalence_engine="sympy",
+        max_symbolic_expr_chars=200,
+        max_symbolic_ast_nodes=128,
+    )
+
+    assert result["score"] == 1.0
+    assert result["reason"] == "sympy_equivalence"
+
+
 def test_sympy_engine_uses_latex2sympy2_extended_fallback(monkeypatch):
     monkeypatch.setitem(sys.modules, "latex2sympy2", None)
 

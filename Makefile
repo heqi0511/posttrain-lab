@@ -1,10 +1,12 @@
-.PHONY: format lint test test-rewards test-eval validate-data validate-sympy-boxed-data build-sympy-boxed-data openr1-level-rlvr-data openr1-cn-math-data openr1-cn-math-single-expr-data dapo-rlvr-data check-leakage eval-baseline eval-math-dataset-dry eval-qwen25-math-dry sft-smoke sft-openr1-math-1k sft-openr1-math-1k-long sft-openr1-format-repair sft-qwen3-4b-format-repair-tiny sft-qwen3-4b-sympy-boxed-smoke sft-qwen3-4b-sympy-boxed-full sft-qwen3-4b-cn-math sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke rlvr-qwen25-dapo-dry submit-qwen25-dapo-grpo gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
+.PHONY: format lint test test-rewards test-eval validate-data validate-sympy-boxed-data build-sympy-boxed-data openr1-level-rlvr-data openr1-cn-math-data openr1-cn-math-single-expr-data dapo-rlvr-data dapo-verl-parquet-data check-leakage eval-baseline eval-math-dataset-dry eval-qwen25-math-dry sft-smoke sft-openr1-math-1k sft-openr1-math-1k-long sft-openr1-format-repair sft-qwen3-4b-format-repair-tiny sft-qwen3-4b-sympy-boxed-smoke sft-qwen3-4b-sympy-boxed-full sft-qwen3-4b-cn-math sft-overfit32 sft-overfit32-qwen3 rlvr-smoke rlvr-smoke-qwen3 rlvr-frontier-audit rlvr-frontier-smoke rlvr-qwen25-dapo-dry submit-qwen25-dapo-grpo submit-verl-qwen25-dapo-smoke gsm8k-rlvr-data rlvr-gsm8k-scout-thinking-false rlvr-gsm8k-scout-thinking-true rlvr-gsm8k-scout rlvr-gsm8k-audit-thinking-false rlvr-gsm8k-audit-thinking-true rlvr-gsm8k-audit diagnose-parse-failures rlvr-small compare-runs e2e-smoke
 PYTHON ?= python3
 RUN_FRONTIER_AUDIT ?= 0
 SYMPY_BOXED_DATA_DIR ?= data/staged/openr1_deepmath_sympy_boxed_v1
 DAPO_INPUT_PATH ?= /fs/nexus-scratch/qhe123/datasets/DAPO-Math-Raw-17k/dapo-math-raw-17k.parquet
 DAPO_RLVR_DIR ?= data/rlvr_prompts/dapo_math_raw_17k
+DAPO_VERL_PARQUET_DIR ?= /fs/nexus-scratch/qhe123/datasets/verl_parquet/dapo_math_raw_17k_boxed
 QWEN25_DAPO_GRPO_CONFIG ?= configs/rlvr/qwen25_math_1_5b_dapo_grpo_paperish.yaml
+QWEN25_DAPO_VERL_GRPO_CONFIG ?= configs/verl/qwen25_math_1_5b_dapo_grpo_smoke.sh
 SLURM_PARTITION ?= cbcb-heng
 SLURM_GRES ?= gpu:rtx6000ada:4
 SLURM_CPUS ?= 16
@@ -79,6 +81,9 @@ openr1-cn-math-single-expr-data:
 dapo-rlvr-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.dapo_math --input-path $(DAPO_INPUT_PATH) --output $(DAPO_RLVR_DIR)/train.jsonl --summary $(DAPO_RLVR_DIR)/summary.json
 
+dapo-verl-parquet-data:
+	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.dapo_math --input-path $(DAPO_INPUT_PATH) --output $(DAPO_RLVR_DIR)/train.jsonl --summary $(DAPO_RLVR_DIR)/summary.json --verl-parquet-output $(DAPO_VERL_PARQUET_DIR)/train.parquet --verl-parquet-summary $(DAPO_VERL_PARQUET_DIR)/summary.json
+
 check-leakage:
 	@echo "check-leakage placeholder: no leakage checker configured yet"
 
@@ -152,6 +157,10 @@ rlvr-qwen25-dapo-dry:
 submit-qwen25-dapo-grpo:
 	@mkdir -p $(SLURM_LOG_DIR)
 	sbatch --job-name=qwen25-dapo-grpo --partition=$(SLURM_PARTITION) --gres=$(SLURM_GRES) --cpus-per-task=$(SLURM_CPUS) --mem=$(SLURM_MEM) --time=$(SLURM_TIME) --output=$(SLURM_LOG_DIR)/qwen25-dapo-grpo-%j.out --error=$(SLURM_LOG_DIR)/qwen25-dapo-grpo-%j.err scripts/slurm/run_grpo_config.sh $(QWEN25_DAPO_GRPO_CONFIG)
+
+submit-verl-qwen25-dapo-smoke:
+	@mkdir -p $(SLURM_LOG_DIR)
+	sbatch --job-name=verl-qwen25-dapo-smoke --partition=$(SLURM_PARTITION) --gres=$(SLURM_GRES) --cpus-per-task=$(SLURM_CPUS) --mem=$(SLURM_MEM) --time=$(SLURM_TIME) --output=$(SLURM_LOG_DIR)/verl-qwen25-dapo-smoke-%j.out --error=$(SLURM_LOG_DIR)/verl-qwen25-dapo-smoke-%j.err scripts/slurm/run_verl_grpo_config.sh $(QWEN25_DAPO_VERL_GRPO_CONFIG)
 
 gsm8k-rlvr-data:
 	PYTHONPATH=src PYTHONDONTWRITEBYTECODE=1 $(PYTHON) -m posttrain_lab.data.gsm8k --output data/rlvr_prompts/gsm8k_train.jsonl --summary data/rlvr_prompts/gsm8k_train_summary.json
