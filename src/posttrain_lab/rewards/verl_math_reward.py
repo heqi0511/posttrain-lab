@@ -1,10 +1,13 @@
-"""Thin verl entrypoint for the strict boxed math reward."""
+"""Thin verl entrypoints for boxed math rewards."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from posttrain_lab.rewards.math_reward import compute_score as _compute_score
+from posttrain_lab.rewards.math_reward import (
+    compute_score as _compute_score,
+    compute_score_verl_style as _compute_score_verl_style,
+)
 
 
 def compute_score(*args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -12,6 +15,19 @@ def compute_score(*args: Any, **kwargs: Any) -> dict[str, Any]:
 
     result = dict(_compute_score(*args, **kwargs))
     return _sanitize_extra_info(result)
+
+
+def compute_score_verl_style(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Forward verl reward calls to ``math_boxed_verl_v001``."""
+
+    result = dict(_compute_score_verl_style(*args, **kwargs))
+    return _sanitize_extra_info(result)
+
+
+def compute_score_common(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Alias for configs that prefer a shorter common-verl-style name."""
+
+    return compute_score_verl_style(*args, **kwargs)
 
 
 def _sanitize_extra_info(result: dict[str, Any]) -> dict[str, Any]:

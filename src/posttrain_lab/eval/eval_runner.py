@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from posttrain_lab.eval.metrics import exact_match, format_success, mean_boolean
-from posttrain_lab.rewards.math_reward import MathRewardConfig, score_math_boxed_v001
+from posttrain_lab.rewards.math_reward import MathRewardConfig, score_math_boxed_by_version
 
 
 PARSE_FAILURE_REASONS = {
@@ -56,9 +56,10 @@ def run_eval(config):
         parsed_answer = None
         answer_failure_reason = None
         if metrics_config.get("boxed_math_match") and "answer" in example:
-            reward = score_math_boxed_v001(
+            reward = score_math_boxed_by_version(
                 generation,
                 answer,
+                reward_version=str(metrics_config.get("reward_version", "math_boxed_v001")),
                 config=MathRewardConfig(
                     allow_symbolic_equivalence=bool(metrics_config.get("allow_symbolic_equivalence", False)),
                     symbolic_equivalence_engine=str(metrics_config.get("symbolic_equivalence_engine", "fraction")),

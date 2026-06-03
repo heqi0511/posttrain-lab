@@ -10,6 +10,9 @@ from typing import Any, List, Optional, Tuple
 
 
 REWARD_VERSION = "math_boxed_v001"
+VERL_STYLE_REWARD_VERSION = "math_boxed_verl_v001"
+VERL_STYLE_FORMAT_REWARD = 0.1
+SUPPORTED_REWARD_VERSIONS = frozenset({REWARD_VERSION, VERL_STYLE_REWARD_VERSION})
 _BOXED = r"\boxed"
 _MAX_SYMBOLIC_EXPR_CHARS = 120
 _MAX_SYMBOLIC_AST_NODES = 64
@@ -65,6 +68,43 @@ def math_boxed_v001(
     return score_math_boxed_v001(completion, answer, config=config).score
 
 
+def math_boxed_verl_v001(
+    completion: str,
+    answer: str,
+    *,
+    config: Optional[MathRewardConfig] = None,
+    allow_symbolic_equivalence: Optional[bool] = None,
+    format_reward: float = VERL_STYLE_FORMAT_REWARD,
+) -> float:
+    """Return the scalar common-verl-style boxed math reward."""
+
+    if allow_symbolic_equivalence is not None:
+        base = config or MathRewardConfig()
+        config = replace(base, allow_symbolic_equivalence=allow_symbolic_equivalence)
+    return score_math_boxed_verl_v001(
+        completion,
+        answer,
+        config=config,
+        format_reward=format_reward,
+    ).score
+
+
+def score_math_boxed_by_version(
+    completion: str,
+    answer: str,
+    *,
+    reward_version: str = REWARD_VERSION,
+    config: Optional[MathRewardConfig] = None,
+) -> MathRewardResult:
+    """Score a boxed math completion using an explicit reward version."""
+
+    if reward_version == REWARD_VERSION:
+        return score_math_boxed_v001(completion, answer, config=config)
+    if reward_version == VERL_STYLE_REWARD_VERSION:
+        return score_math_boxed_verl_v001(completion, answer, config=config)
+    raise ValueError(f"unsupported reward_version: {reward_version}")
+
+
 def compute_score(*args: Any, **kwargs: Any) -> dict[str, Any]:
     """verl-compatible adapter for ``math_boxed_v001``.
 
@@ -96,6 +136,54 @@ def compute_score(*args: Any, **kwargs: Any) -> dict[str, Any]:
     best_result: Optional[MathRewardResult] = None
     for index, candidate in enumerate(candidates):
         result = score_math_boxed_v001(solution_str, candidate, config=config)
+        if best_result is None or result.score > best_result.score:
+            best_index = index
+            best_result = result
+        if result.score == 1.0:
+            break
+
+    assert best_result is not None
+    return {
+        "score": best_result.score,
+        "reason": best_result.reason,
+        "reward_version": best_result.version,
+        "extracted_answer": best_result.extracted_answer,
+        "normalized_prediction": best_result.normalized_prediction,
+        "normalized_answer": best_result.normalized_answer,
+        "ground_truth_index": best_index,
+        "num_ground_truths": len(candidates),
+        "data_source": data_source,
+    }
+
+
+def compute_score_verl_style(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    """verl-compatible adapter for the common-verl-style boxed math reward."""
+
+    format_reward = float(kwargs.pop("format_reward", VERL_STYLE_FORMAT_REWARD))
+    solution_str, ground_truth, data_source, _, config = _parse_compute_score_args(args, kwargs)
+    candidates = _ground_truth_candidates(ground_truth)
+    if not candidates:
+        return {
+            "score": 0.0,
+            "reason": "missing_ground_truth",
+            "reward_version": VERL_STYLE_REWARD_VERSION,
+            "extracted_answer": None,
+            "normalized_prediction": None,
+            "normalized_answer": None,
+            "ground_truth_index": None,
+            "num_ground_truths": 0,
+            "data_source": data_source,
+        }
+
+    best_index = 0
+    best_result: Optional[MathRewardResult] = None
+    for index, candidate in enumerate(candidates):
+        result = score_math_boxed_verl_v001(
+            solution_str,
+            candidate,
+            config=config,
+            format_reward=format_reward,
+        )
         if best_result is None or result.score > best_result.score:
             best_index = index
             best_result = result
@@ -264,6 +352,80 @@ def score_math_boxed_v001(
         score=0.0,
         reason="answer_mismatch",
         extracted_answer=boxed_answers[-1],
+        normalized_prediction=normalized_prediction,
+        normalized_answer=normalized_answer,
+    )
+
+
+def score_math_boxed_verl_v001(
+    completion: str,
+    answer: str,
+    *,
+    config: Optional[MathRewardConfig] = None,
+    format_reward: float = VERL_STYLE_FORMAT_REWARD,
+) -> MathRewardResult:
+    """Score using a common verl-style boxed final-answer verifier.
+
+    This variant is intentionally more permissive than ``math_boxed_v001``:
+    it extracts the last well-formed visible boxed answer, gives full credit
+    when it matches the reference, and gives a small format reward when the
+    answer is boxed but wrong.
+    """
+
+    config = config or MathRewardConfig()
+    if len(completion) > config.max_output_chars:
+        return MathRewardResult(score=0.0, reason="output_too_long", version=VERL_STYLE_REWARD_VERSION)
+    if len(answer) > config.max_answer_chars:
+        return MathRewardResult(score=0.0, reason="answer_too_long", version=VERL_STYLE_REWARD_VERSION)
+    if _has_unclosed_think_block(completion):
+        return MathRewardResult(score=0.0, reason="unclosed_think_block", version=VERL_STYLE_REWARD_VERSION)
+
+    scored_completion = _strip_think_blocks(completion)
+    boxed_answers, malformed = _extract_boxed_answers_with_status(scored_completion)
+    if malformed:
+        return MathRewardResult(score=0.0, reason="malformed_boxed_answer", version=VERL_STYLE_REWARD_VERSION)
+    if not boxed_answers:
+        return MathRewardResult(score=0.0, reason="no_boxed_answer", version=VERL_STYLE_REWARD_VERSION)
+
+    extracted_answer = boxed_answers[-1]
+    normalized_prediction = normalize_math_answer(extracted_answer)
+    if not normalized_prediction:
+        return MathRewardResult(
+            score=0.0,
+            reason="empty_boxed_answer",
+            version=VERL_STYLE_REWARD_VERSION,
+            extracted_answer=extracted_answer,
+            normalized_prediction=normalized_prediction,
+            normalized_answer=normalize_math_answer(answer),
+        )
+
+    normalized_answer = normalize_math_answer(answer)
+    if normalized_prediction == normalized_answer:
+        return MathRewardResult(
+            score=1.0,
+            reason="exact_match",
+            version=VERL_STYLE_REWARD_VERSION,
+            extracted_answer=extracted_answer,
+            normalized_prediction=normalized_prediction,
+            normalized_answer=normalized_answer,
+        )
+
+    equivalence_reason = _symbolic_equivalence_reason(normalized_prediction, normalized_answer, config)
+    if equivalence_reason:
+        return MathRewardResult(
+            score=1.0,
+            reason=equivalence_reason,
+            version=VERL_STYLE_REWARD_VERSION,
+            extracted_answer=extracted_answer,
+            normalized_prediction=normalized_prediction,
+            normalized_answer=normalized_answer,
+        )
+
+    return MathRewardResult(
+        score=max(0.0, min(1.0, float(format_reward))),
+        reason="format_correct_answer_mismatch",
+        version=VERL_STYLE_REWARD_VERSION,
+        extracted_answer=extracted_answer,
         normalized_prediction=normalized_prediction,
         normalized_answer=normalized_answer,
     )

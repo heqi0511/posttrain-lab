@@ -1,4 +1,4 @@
-"""Minimal GRPO smoke training using TRL and math_boxed_v001 rewards."""
+"""Minimal GRPO smoke training using boxed-answer math rewards."""
 
 from __future__ import annotations
 
@@ -11,7 +11,13 @@ from pathlib import Path
 
 from posttrain_lab.data.validate import validate_jsonl
 from posttrain_lab.eval.eval_runner import run_eval
-from posttrain_lab.rewards.math_reward import MathRewardConfig, math_boxed_v001, score_math_boxed_v001
+from posttrain_lab.rewards.math_reward import (
+    REWARD_VERSION,
+    SUPPORTED_REWARD_VERSIONS,
+    MathRewardConfig,
+    math_boxed_v001,
+    score_math_boxed_by_version,
+)
 from posttrain_lab.train.train_sft import (
     _dump_yaml,
     _generation_prompt_to_text,
@@ -90,13 +96,18 @@ def math_boxed_reward_func(prompts, completions, answer, **kwargs):
     ]
 
 
-def make_math_boxed_reward_func(reward_config):
+def make_math_boxed_reward_func(reward_config, reward_version=REWARD_VERSION):
     """Build a TRL reward function with an explicit math reward config."""
 
     def _reward_func(prompts, completions, answer, **kwargs):
         del prompts, kwargs
         return [
-            math_boxed_v001(_completion_to_text(completion), target, config=reward_config)
+            score_math_boxed_by_version(
+                _completion_to_text(completion),
+                target,
+                reward_version=reward_version,
+                config=reward_config,
+            ).score
             for completion, target in zip(completions, answer)
         ]
 
@@ -320,7 +331,7 @@ def _resolve_config(config):
     resolved["peft"].setdefault("lora_dropout", 0.0)
     resolved["peft"].setdefault("target_modules", [])
 
-    if resolved["reward_version"] != "math_boxed_v001":
+    if resolved["reward_version"] not in SUPPORTED_REWARD_VERSIONS:
         raise ValueError(f"unsupported reward_version: {resolved['reward_version']}")
     if int(resolved["rollout"]["num_generations"]) < 2:
         raise ValueError("GRPO smoke requires rollout.num_generations >= 2")
@@ -338,7 +349,7 @@ def _run_trl_grpo(config, examples, output_dir):
         raise RuntimeError("TRL GRPO training requires transformers, datasets, trl, and peft") from exc
 
     model, tokenizer, peft_config = _load_policy_model_and_tokenizer(config)
-    reward_func = make_math_boxed_reward_func(_math_reward_config(config))
+    reward_func = make_math_boxed_reward_func(_math_reward_config(config), config["reward_version"])
     train_dataset = Dataset.from_list(_to_grpo_rows(examples))
     args = GRPOConfig(**_build_grpo_config_kwargs(config, output_dir))
     trainer = GRPOTrainer(
@@ -722,7 +733,12 @@ def _write_sample_rollouts(path, config, examples, dry_run, model=None, tokenize
                     config,
                     sample=generations_per_prompt > 1,
                 )
-            reward_result = score_math_boxed_v001(generation, answer, config=reward_config)
+            reward_result = score_math_boxed_by_version(
+                generation,
+                answer,
+                reward_version=config["reward_version"],
+                config=reward_config,
+            )
             completion_records.append(
                 {
                     "generation_index": generation_index,

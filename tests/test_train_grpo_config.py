@@ -10,6 +10,7 @@ from posttrain_lab.train.train_grpo import (
     _summarize_trainer_signal,
     load_config,
     load_rlvr_train_examples,
+    make_math_boxed_reward_func,
     math_boxed_reward_func,
     run_grpo,
 )
@@ -137,6 +138,7 @@ def test_qwen25_dapo_grpo_config_matches_paperish_hyperparams():
     resolved = _resolve_config(config)
 
     assert resolved["model_name_or_path"].endswith("Qwen2.5-Math-1.5B")
+    assert resolved["reward_version"] == "math_boxed_verl_v001"
     assert resolved["selection"]["max_train_examples"] == 17917
     assert resolved["training"]["per_device_train_batch_size"] == 16
     assert resolved["training"]["learning_rate"] == 0.000002
@@ -278,6 +280,18 @@ def test_math_boxed_reward_func_scores_batch_answers():
     )
 
     assert rewards == [1.0, 0.0]
+
+
+def test_configured_reward_func_can_use_common_verl_style_reward():
+    reward_func = make_math_boxed_reward_func(_math_reward_config({}), "math_boxed_verl_v001")
+
+    rewards = reward_func(
+        prompts=["p", "p"],
+        completions=[r"The answer is \boxed{4}. extra text", r"The answer is \boxed{5}."],
+        answer=["4", "4"],
+    )
+
+    assert rewards == [1.0, 0.1]
 
 
 def test_rollout_format_gate_rejects_saturated_rewards():

@@ -10,7 +10,7 @@ seed: 20260602
 torch_dtype: bfloat16
 trust_remote_code: false
 enable_thinking: false
-reward_version: math_boxed_v001
+reward_version: math_boxed_verl_v001
 selection:
   train_split: train
   max_train_examples: 17917

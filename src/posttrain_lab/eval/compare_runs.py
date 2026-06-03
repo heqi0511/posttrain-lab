@@ -7,7 +7,7 @@ import json
 import re
 from pathlib import Path
 
-from posttrain_lab.rewards.math_reward import MathRewardConfig, score_math_boxed_v001
+from posttrain_lab.rewards.math_reward import MathRewardConfig, score_math_boxed_by_version
 
 
 RUN_ORDER = ["base", "sft", "sft_rlvr"]
@@ -135,7 +135,7 @@ def _extract_failure_rows(rows, limit, too_long_threshold):
             continue
         generation = str(row.get("generation", ""))
         answer = _unbox_answer(str(row.get("answer", "")))
-        reward = score_math_boxed_v001(generation, answer, config=MathRewardConfig())
+        reward = score_math_boxed_by_version(generation, answer, config=MathRewardConfig())
         failures.append(
             {
                 "id": row.get("id"),

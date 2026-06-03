@@ -9,7 +9,7 @@ import statistics
 from pathlib import Path
 
 from posttrain_lab.eval.metrics import format_success, mean_boolean
-from posttrain_lab.rewards.math_reward import MathRewardConfig, score_math_boxed_v001
+from posttrain_lab.rewards.math_reward import MathRewardConfig, score_math_boxed_by_version
 from posttrain_lab.train.train_sft import _load_yaml_subset, _model_load_kwargs
 
 
@@ -243,9 +243,10 @@ def _score_generation(example, generation, prompt_index, sample_index, metrics_c
     failure_reason = None
     parse_failure = None
     if metrics_config["boxed_math_match"]:
-        result = score_math_boxed_v001(
+        result = score_math_boxed_by_version(
             generation,
             answer,
+            reward_version=str(metrics_config.get("reward_version", "math_boxed_v001")),
             config=MathRewardConfig(
                 allow_symbolic_equivalence=bool(metrics_config["allow_symbolic_equivalence"]),
                 symbolic_equivalence_engine=str(metrics_config["symbolic_equivalence_engine"]),

@@ -10,7 +10,9 @@ from posttrain_lab.rewards.math_reward import (
     MathRewardConfig,
     extract_boxed_answers,
     math_boxed_v001,
+    math_boxed_verl_v001,
     normalize_math_answer,
+    score_math_boxed_verl_v001,
     score_math_boxed_v001,
 )
 import posttrain_lab.rewards.math_reward as math_reward
@@ -116,6 +118,56 @@ def test_verl_reward_wrapper_sanitizes_none_metadata_for_validation_metrics():
     assert result["normalized_answer"] == ""
     assert result["data_source"] == ""
     assert result["ground_truth_index"] == 0
+
+
+def test_math_boxed_verl_v001_accepts_correct_boxed_answer_with_trailing_text():
+    result = score_math_boxed_verl_v001(
+        r"The answer is \boxed{4}. This follows from addition.",
+        "4",
+    )
+
+    assert result.score == 1.0
+    assert result.reason == "exact_match"
+    assert result.version == "math_boxed_verl_v001"
+    assert result.normalized_prediction == "4"
+
+
+def test_math_boxed_verl_v001_gives_format_credit_for_wrong_boxed_answer():
+    result = score_math_boxed_verl_v001(r"The answer is \boxed{5}.", "4")
+
+    assert result.score == 0.1
+    assert result.reason == "format_correct_answer_mismatch"
+    assert result.normalized_prediction == "5"
+    assert math_boxed_verl_v001(r"The answer is \boxed{5}.", "4") == 0.1
+
+
+def test_math_boxed_verl_v001_uses_last_boxed_answer_like_common_final_answer_extractors():
+    result = score_math_boxed_verl_v001(r"Try \boxed{3}. Final answer: \boxed{4}.", "4")
+
+    assert result.score == 1.0
+    assert result.reason == "exact_match"
+    assert result.normalized_prediction == "4"
+
+
+def test_verl_reward_wrapper_exposes_common_verl_style_reward():
+    wrapper_path = Path(__file__).parents[1] / "src" / "posttrain_lab" / "rewards" / "verl_math_reward.py"
+    spec = importlib.util.spec_from_file_location("verl_external_reward", wrapper_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+
+    spec.loader.exec_module(module)
+
+    result = module.compute_score_verl_style(
+        data_source="verl-smoke",
+        solution_str=r"The final answer is \boxed{5}.",
+        ground_truth="4",
+        extra_info={},
+    )
+
+    assert result["score"] == 0.1
+    assert result["reason"] == "format_correct_answer_mismatch"
+    assert result["reward_version"] == "math_boxed_verl_v001"
 
 
 def test_sympy_engine_uses_latex2sympy2_extended_fallback(monkeypatch):

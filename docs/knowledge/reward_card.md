@@ -63,3 +63,30 @@ The SymPy path is off by default. It rejects equations containing `=`, natural-l
 - Command: `make test-rewards`
 
 The adversarial fixtures cover multiple boxed answers, repeated identical boxed answers, correct boxed answers embedded before later contradictions, correct boxed candidate with wrong final answer, malformed LaTeX, long output, prompt-injection text, closed and unclosed thinking blocks, ordinary reasoning before a final boxed answer, symbolic equivalence being disabled by default, optional SymPy equivalence, wrong algebra under SymPy, unordered set comparison, and equation-parser hacking.
+
+## math_boxed_verl_v001
+
+- File: `src/posttrain_lab/rewards/math_reward.py`
+- verl entrypoint: `src/posttrain_lab/rewards/verl_math_reward.py`
+- Function name for verl configs: `compute_score_verl_style` or alias `compute_score_common`
+- Reward range: `0.0`, `0.1`, or `1.0`.
+- Default symbolic equivalence: disabled, with the same optional engines as `math_boxed_v001`.
+
+### Contract
+
+This is a common-verl-style diagnostic/training reward, not a replacement for the strict verifier. It extracts the last well-formed visible `\boxed{...}` answer after stripping complete `<think>...</think>` blocks.
+
+Scoring:
+
+- `1.0`: the extracted boxed answer matches the reference by exact normalization or explicitly enabled symbolic equivalence.
+- `0.1`: at least one well-formed boxed answer exists, but the final extracted answer is wrong.
+- `0.0`: no boxed answer, malformed boxed syntax, empty boxed answer, unclosed `<think>` block, overlong output, missing ground truth, or overlong reference.
+
+Unlike `math_boxed_v001`, this version does not require exactly one boxed answer and does not require the boxed answer to be the last visible text. It follows the looser pattern commonly used in verl/TRL examples where format correctness can receive partial credit.
+
+### Known Reward-Hacking Risks
+
+- A model can receive `0.1` for format-only behavior even when the answer is wrong.
+- Multiple boxed answers are allowed; the last boxed answer is used. This is easier to optimize but weaker against contradictory-answer exploits.
+- Text after the boxed answer does not invalidate a correct answer, so verbose or self-contradictory continuations must be monitored separately through completion length and rollout samples.
+- This reward should be logged as `math_boxed_verl_v001` and compared separately from strict `math_boxed_v001` runs.

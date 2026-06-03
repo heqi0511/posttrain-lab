@@ -11,7 +11,11 @@ import time
 from pathlib import Path
 
 from posttrain_lab.data.validate import validate_jsonl
-from posttrain_lab.rewards.math_reward import MathRewardConfig, score_math_boxed_v001
+from posttrain_lab.rewards.math_reward import (
+    SUPPORTED_REWARD_VERSIONS,
+    MathRewardConfig,
+    score_math_boxed_by_version,
+)
 from posttrain_lab.train.train_grpo import (
     PARSE_FAILURE_REASONS,
     _empty_cuda_cache,
@@ -198,7 +202,7 @@ def _resolve_config(config):
     resolved.setdefault("audit", {})
     resolved["audit"].setdefault("flush_every_prompts", 25)
 
-    if resolved["reward_version"] != "math_boxed_v001":
+    if resolved["reward_version"] not in SUPPORTED_REWARD_VERSIONS:
         raise ValueError(f"unsupported reward_version: {resolved['reward_version']}")
     if int(resolved["rollout"]["completions_per_prompt"]) < 2:
         raise ValueError("rollout.completions_per_prompt must be >= 2")
@@ -235,9 +239,10 @@ def _audit_prompt(example, prompt_index, config, model=None, tokenizer=None):
     else:
         completions = _sample_completions(model, tokenizer, prompt, config, count)
     for sample_index, completion in enumerate(completions):
-        reward_result = score_math_boxed_v001(
+        reward_result = score_math_boxed_by_version(
             completion,
             answer,
+            reward_version=config["reward_version"],
             config=MathRewardConfig(
                 allow_symbolic_equivalence=bool(config["reward"]["allow_symbolic_equivalence"]),
                 symbolic_equivalence_engine=str(config["reward"]["symbolic_equivalence_engine"]),

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
-from posttrain_lab.rewards.math_reward import MathRewardConfig, score_math_boxed_v001
+from posttrain_lab.rewards.math_reward import MathRewardConfig, score_math_boxed_by_version
 
 
 PARSE_FAILURE_REASONS = {
@@ -108,7 +108,12 @@ def run_math_dataset_eval(config: Dict[str, Any]):
         ]
         generations = generator.generate_batch(prompts)
         for example, completion in zip(batch, generations):
-            score = score_math_boxed_v001(completion, example.answer, config=reward_config)
+            score = score_math_boxed_by_version(
+                completion,
+                example.answer,
+                reward_version=str(config.get("reward_version") or "math_boxed_v001"),
+                config=reward_config,
+            )
             completion_tokens = generator.count_completion_tokens(completion)
             rows.append(
                 {
