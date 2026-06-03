@@ -179,6 +179,7 @@ def test_qwen25_dapo_one_epoch_8gpu_config_records_small_batch_plan():
     assert resolved["rollout_format_gate"]["sample_count"] == 4
     assert resolved["rollout_format_gate"]["sample_rollout_generations"] == 1
     assert resolved["rollout_format_gate"]["max_completion_length"] == 512
+    assert resolved["rollout_format_gate"]["max_parse_failure_rate"] == 0.9
     assert resolved["peft"]["method"] == "none"
 
 

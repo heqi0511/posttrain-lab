@@ -67,7 +67,9 @@ rollout_format_gate:
   sample_count: 4
   sample_rollout_generations: 1
   max_completion_length: 512
-  max_parse_failure_rate: 0.5
+  # This gate blocks totally dead formatting, but does not require the base model
+  # to already be a strong boxed-answer model before the GRPO experiment.
+  max_parse_failure_rate: 0.9
   max_reward_mean: 0.95
   max_perfect_reward_rate: 0.95
 reward:
